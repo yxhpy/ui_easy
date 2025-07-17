@@ -5,7 +5,7 @@ Configuration management for UI Easy
 import json
 import os
 from typing import Dict, Any, Optional
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from pathlib import Path
 
 @dataclass
@@ -25,11 +25,7 @@ class ModuleConfig:
     """Configuration for a module"""
     enabled: bool = True
     model_config: str = "default"  # Reference to model config
-    custom_prompts: Dict[str, str] = None
-    
-    def __post_init__(self):
-        if self.custom_prompts is None:
-            self.custom_prompts = {}
+    custom_prompts: Dict[str, str] = field(default_factory=dict)
 
 class Config:
     """Main configuration manager"""
@@ -43,11 +39,13 @@ class Config:
         # Set default configurations
         self._set_defaults()
         
-        # Load from file - required for configuration
+        # Load from file or create default
         if self.config_file.exists():
             self.load()
         else:
-            raise FileNotFoundError(f"Configuration file {config_file} not found. Please create it with your API keys and settings.")
+            print(f"Configuration file {config_file} not found. Creating default configuration...")
+            self._create_default_config()
+            self.save()
     
     def _set_defaults(self):
         """Set default configurations"""
@@ -125,3 +123,58 @@ class Config:
         except Exception as e:
             print(f"Error loading config: {e}")
             # Keep defaults if loading fails
+    
+    def _create_default_config(self):
+        """Create default configuration with empty API keys"""
+        # Create default model configurations
+        default_openai = ModelConfig(
+            name="GPT-4",
+            provider="openai",
+            api_key="",  # User must fill this
+            model_id="gpt-4-turbo-preview",
+            max_tokens=4000,
+            temperature=0.7,
+            timeout=30
+        )
+        
+        default_deepseek = ModelConfig(
+            name="DeepSeek Chat",
+            provider="deepseek",
+            api_key="",  # User must fill this
+            base_url="https://api.deepseek.com/v1",
+            model_id="deepseek-chat",
+            max_tokens=4000,
+            temperature=0.7,
+            timeout=30
+        )
+        
+        self.models = {
+            "gpt4": default_openai,
+            "deepseek": default_deepseek
+        }
+        
+        # Create default module configurations
+        image_analyzer_config = ModuleConfig(
+            enabled=True,
+            model_config="gpt4",
+            custom_prompts={}
+        )
+        
+        requirement_analyzer_config = ModuleConfig(
+            enabled=True,
+            model_config="deepseek", 
+            custom_prompts={}
+        )
+        
+        self.modules = {
+            "image_analyzer": image_analyzer_config,
+            "requirement_analyzer": requirement_analyzer_config
+        }
+        
+        # Create default app settings
+        self.app_settings = {
+            "language": "zh_CN",
+            "default_analysis_type": "Full Analysis",
+            "auto_save": False,
+            "export_format": "JSON"
+        }

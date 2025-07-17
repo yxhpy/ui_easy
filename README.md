@@ -22,21 +22,35 @@ pip install -r requirements.txt
 
 ## Configuration
 
-Before using the application, you need to configure API keys:
+UI Easy now features a comprehensive configuration interface. You can configure the application in two ways:
 
-1. Run the application once to generate the default config file
-2. Edit `config.json` to add your API keys:
+### Method 1: Using the Settings Tab (Recommended)
+
+1. Run the application: `python main.py`
+2. Click on the "Settings" tab
+3. Configure your AI models:
+   - Add/edit model configurations
+   - Enter your API keys
+   - Set model parameters
+4. Configure modules and app settings
+5. Test your configuration
+6. Save settings
+
+### Method 2: Manual Configuration
+
+1. Copy `config_template.json` to `config.json`
+2. Edit the file to add your API keys:
 
 ```json
 {
   "models": {
-    "powerful_model": {
+    "gpt4": {
       "name": "GPT-4",
       "provider": "openai",
       "api_key": "your-openai-api-key",
       "model_id": "gpt-4-turbo-preview"
     },
-    "efficient_model": {
+    "deepseek": {
       "name": "DeepSeek",
       "provider": "deepseek", 
       "api_key": "your-deepseek-api-key",
@@ -46,6 +60,8 @@ Before using the application, you need to configure API keys:
   }
 }
 ```
+
+For detailed configuration instructions, see [CONFIG_GUIDE.md](CONFIG_GUIDE.md).
 
 ## Usage
 

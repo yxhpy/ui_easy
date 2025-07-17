@@ -1,0 +1,42 @@
+{
+  "models": {
+    "gpt4": {
+      "name": "GPT-4",
+      "provider": "openai",
+      "api_key": "your-openai-api-key-here",
+      "base_url": null,
+      "model_id": "gpt-4-turbo-preview",
+      "max_tokens": 4000,
+      "temperature": 0.7,
+      "timeout": 30
+    },
+    "deepseek": {
+      "name": "DeepSeek Chat",
+      "provider": "deepseek",
+      "api_key": "your-deepseek-api-key-here",
+      "base_url": "https://api.deepseek.com/v1",
+      "model_id": "deepseek-chat",
+      "max_tokens": 4000,
+      "temperature": 0.7,
+      "timeout": 30
+    }
+  },
+  "modules": {
+    "image_analyzer": {
+      "enabled": true,
+      "model_config": "gpt4",
+      "custom_prompts": {}
+    },
+    "requirement_analyzer": {
+      "enabled": true,
+      "model_config": "deepseek",
+      "custom_prompts": {}
+    }
+  },
+  "app_settings": {
+    "language": "zh_CN",
+    "default_analysis_type": "Full Analysis",
+    "auto_save": false,
+    "export_format": "JSON"
+  }
+} 
