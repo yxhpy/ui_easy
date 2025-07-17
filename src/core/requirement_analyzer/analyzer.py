@@ -358,10 +358,11 @@ class RequirementAnalyzer(BaseModule):
                 response = model.generate(prompt)
                 self.streaming_text_updated.emit(response)
             
-            component_spec = self._parse_component_spec(response)
+            # 解析详细需求分析结果并更新需求对象
+            analysis_result = self._parse_detailed_analysis(response)
             
-            if component_spec:
-                requirement.component_spec = component_spec
+            if analysis_result:
+                self._update_requirement_with_analysis(requirement, analysis_result)
                 requirement.status = RequirementStatus.ANALYZED
                 self.streaming_text_updated.emit("\n" + tr("component_analysis_complete").format(title=requirement.title) + "\n\n")
             else:
@@ -398,17 +399,16 @@ class RequirementAnalyzer(BaseModule):
                 response = model.generate(prompt)
                 self.streaming_text_updated.emit(response)
             
-            layout_spec = self._parse_layout_spec(response)
+            # 解析详细需求分析结果并更新需求对象
+            analysis_result = self._parse_detailed_analysis(response)
             
-            if layout_spec:
-                requirement.layout_spec = layout_spec
+            if analysis_result:
+                self._update_requirement_with_analysis(requirement, analysis_result)
                 requirement.status = RequirementStatus.ANALYZED
                 self.streaming_text_updated.emit("\n" + tr("layout_analysis_complete").format(title=requirement.title) + "\n\n")
             else:
                 requirement.status = RequirementStatus.INCOMPLETE
                 self.streaming_text_updated.emit("\n" + tr("layout_analysis_failed").format(title=requirement.title) + "\n\n")
-                # 记录调试信息
-                self.streaming_text_updated.emit(f"调试信息：AI响应内容：{response[:300]}...\n\n")
                 
         except Exception as e:
             self.error_occurred.emit(f"Error analyzing layout {requirement.title}: {str(e)}")
@@ -441,17 +441,16 @@ class RequirementAnalyzer(BaseModule):
                 response = model.generate(prompt)
                 self.streaming_text_updated.emit(response)
             
-            interaction_specs = self._parse_interaction_specs(response)
+            # 解析详细需求分析结果并更新需求对象
+            analysis_result = self._parse_detailed_analysis(response)
             
-            if interaction_specs:
-                requirement.interaction_specs = interaction_specs
+            if analysis_result:
+                self._update_requirement_with_analysis(requirement, analysis_result)
                 requirement.status = RequirementStatus.ANALYZED
                 self.streaming_text_updated.emit("\n" + tr("interaction_analysis_complete").format(title=requirement.title) + "\n\n")
             else:
                 requirement.status = RequirementStatus.INCOMPLETE
                 self.streaming_text_updated.emit("\n" + tr("interaction_analysis_failed").format(title=requirement.title) + "\n\n")
-                # 记录调试信息
-                self.streaming_text_updated.emit(f"调试信息：AI响应内容：{response[:300]}...\n\n")
                 
         except Exception as e:
             self.error_occurred.emit(f"Error analyzing interaction {requirement.title}: {str(e)}")
@@ -495,10 +494,11 @@ class RequirementAnalyzer(BaseModule):
                     response = model.generate(prompt)
                     self.streaming_text_updated.emit(response)
                 
-                component_spec = self._parse_component_spec(response)
+                # 解析详细需求分析结果并更新需求对象
+                analysis_result = self._parse_detailed_analysis(response)
                 
-                if component_spec:
-                    requirement.component_spec = component_spec
+                if analysis_result:
+                    self._update_requirement_with_analysis(requirement, analysis_result)
                     requirement.status = RequirementStatus.ANALYZED
                     self.streaming_text_updated.emit("\n" + tr("component_analysis_complete").format(title=requirement.title) + "\n\n")
                 else:
@@ -532,11 +532,11 @@ class RequirementAnalyzer(BaseModule):
                 )
                 
                 response = model.generate(prompt)
-                layout_spec = self._parse_layout_spec(response)
+                # 解析详细需求分析结果并更新需求对象
+                analysis_result = self._parse_detailed_analysis(response)
                 
-                if layout_spec:
-                    requirement.layout_spec = layout_spec
-                    requirement.status = RequirementStatus.ANALYZED
+                if analysis_result:
+                    self._update_requirement_with_analysis(requirement, analysis_result)
             
             # Analyze interaction requirements
             for requirement in interaction_requirements:
@@ -547,11 +547,11 @@ class RequirementAnalyzer(BaseModule):
                 )
                 
                 response = model.generate(prompt)
-                interaction_specs = self._parse_interaction_specs(response)
+                # 解析详细需求分析结果并更新需求对象
+                analysis_result = self._parse_detailed_analysis(response)
                 
-                if interaction_specs:
-                    requirement.interaction_specs = interaction_specs
-                    requirement.status = RequirementStatus.ANALYZED
+                if analysis_result:
+                    self._update_requirement_with_analysis(requirement, analysis_result)
                     
         except Exception as e:
             self.error_occurred.emit(f"Error analyzing layout and interactions: {str(e)}")
@@ -1302,122 +1302,130 @@ class RequirementAnalyzer(BaseModule):
         return """
         {language_instruction}
         
-        为UI组件需求进行详细分析: "{requirement_title}"
-        描述: {requirement_description}
+        对UI组件需求进行详细的需求分析: "{requirement_title}"
+        需求描述: {requirement_description}
         
-        基于原始需求: {original_text}
+        基于原始需求文档: {original_text}
         
-        请分析并返回组件规格的JSON格式，只需要返回JSON对象，不要添加任何解释或标记。
+        请从需求分析的角度深入分析这个UI组件需求，输出详细的需求规格说明。请返回JSON格式：
         
-        对于单个组件，返回对象格式：
         {{
-            "name": "TaskCounter",
-            "type": "card",
-            "properties": {{
-                "size": "medium",
-                "variant": "outline",
-                "position": "top",
-                "layout": "horizontal",
-                "data": {{
-                    "pendingLabel": "待办中",
-                    "completedLabel": "已完成"
-                }},
-                "styling": {{
-                    "padding": "12px 16px",
-                    "backgroundColor": "#fafafa",
-                    "borderRadius": 4
-                }},
-                "responsive": {{
-                    "xs": {{ "fontSize": 14 }},
-                    "md": {{ "fontSize": 16 }}
-                }}
+            "requirement_details": {{
+                "detailed_description": "对该组件需求的详细描述，包括功能目的、使用场景、预期效果",
+                "user_stories": [
+                    "作为用户，我希望能够...",
+                    "当我使用这个组件时，我期望..."
+                ],
+                "business_value": "这个组件为业务带来的价值和意义",
+                "functional_requirements": [
+                    "必须支持的具体功能点1",
+                    "必须支持的具体功能点2"
+                ],
+                "non_functional_requirements": [
+                    "性能要求：响应时间<300ms",
+                    "可用性要求：支持键盘导航",
+                    "兼容性要求：支持IE11+"
+                ],
+                "acceptance_criteria": [
+                    "验收标准1：当用户点击按钮时，应该...",
+                    "验收标准2：当输入无效数据时，应该显示...",
+                    "验收标准3：在移动端访问时，组件应该..."
+                ],
+                "constraints": [
+                    "设计约束：必须符合现有设计规范",
+                    "技术约束：需要兼容现有框架",
+                    "业务约束：不能超过预算限制"
+                ],
+                "assumptions": [
+                    "假设用户已经登录系统",
+                    "假设网络连接稳定"
+                ],
+                "dependencies": [
+                    "依赖于用户认证模块",
+                    "依赖于数据API接口"
+                ],
+                "risks": [
+                    "风险1：复杂交互可能影响性能",
+                    "风险2：浏览器兼容性问题"
+                ]
             }},
-            "events": ["updateCount"],
-            "validation": {{}},
-            "accessibility": {{
-                "aria-label": "任务统计信息：待办与已完成数量",
-                "role": "status",
-                "aria-live": "polite",
-                "keyboard_navigation": false
+            "layout_considerations": {{
+                "description": "该组件在页面布局中的考虑因素",
+                "placement": "组件在页面中的位置和作用",
+                "responsive_needs": "响应式设计需求说明",
+                "spacing_requirements": "与其他元素的间距要求"
             }},
-            "children": []
+            "ux_considerations": {{
+                "usability": "易用性要求和考虑",
+                "accessibility": "无障碍访问要求",
+                "user_feedback": "用户反馈和状态提示需求",
+                "error_handling": "错误处理和用户引导"
+            }}
         }}
         
-        对于多个相关组件，返回数组格式：
-        [
-            {{
-                "name": "TaskList",
-                "type": "list",
-                "properties": {{ "virtualized": true }},
-                "events": ["scroll", "select"],
-                "children": ["TaskItem"]
-            }},
-            {{
-                "name": "TaskItem", 
-                "type": "card",
-                "properties": {{ "interactive": true }},
-                "events": ["click", "hover"]
-            }}
-        ]
-        
-        确保：
-        1. name字段使用具体的组件名称
-        2. type字段选择合适的组件类型：button, input, form, card, modal, list, item, container等
-        3. properties包含详细的配置信息
-        4. events列出相关的交互事件
-        5. accessibility提供无障碍访问信息
-        6. children列出子组件（如有）
+        注意：
+        1. 专注于需求分析，不要涉及具体的技术实现细节
+        2. 验收标准要具体、可测试、可衡量
+        3. 考虑用户体验和业务价值
+        4. 识别潜在的风险和依赖关系
         """
     
     def _get_layout_analysis_prompt(self) -> str:
         return """
         {language_instruction}
         
-        为布局需求进行详细分析: {requirement_description}
+        对布局需求进行详细的需求分析: {requirement_description}
         
-        基于原始需求: {original_text}
+        基于原始需求文档: {original_text}
         
-        请分析并返回布局规格的JSON格式，只需要返回JSON对象，不要添加任何解释或标记：
+        请从需求分析的角度深入分析这个布局需求，输出详细的需求规格说明。请返回JSON格式：
         
         {{
-            "type": "flex",
-            "sections": [
-                {{
-                    "name": "header",
-                    "position": "top", 
-                    "size": "auto",
-                    "components": ["appTitle"]
-                }},
-                {{
-                    "name": "main",
-                    "position": "center",
-                    "size": "1fr", 
-                    "components": ["todoList"]
-                }}
-            ],
-            "responsive": true,
-            "breakpoints": {{
-                "mobile": 768,
-                "tablet": 1024,
-                "desktop": 1200
+            "requirement_details": {{
+                "detailed_description": "对该布局需求的详细描述，包括布局目的、信息架构、用户流程",
+                "user_stories": [
+                    "作为用户，我希望页面布局能够...",
+                    "当我浏览页面时，我期望信息组织..."
+                ],
+                "business_value": "这个布局设计为业务带来的价值",
+                "functional_requirements": [
+                    "必须清晰展示主要功能区域",
+                    "必须支持快速导航和信息查找",
+                    "必须适配不同设备屏幕"
+                ],
+                "acceptance_criteria": [
+                    "验收标准1：在桌面端，主要内容区域应占据...",
+                    "验收标准2：在移动端，导航菜单应该...",
+                    "验收标准3：页面加载后，用户应该能够在3秒内找到..."
+                ],
+                "constraints": [
+                    "设计约束：必须遵循既定的设计规范",
+                    "内容约束：需要容纳特定数量的信息模块",
+                    "技术约束：需要支持多种浏览器"
+                ]
             }},
-            "spacing": {{
-                "padding": "16px",
-                "margin": "8px",
-                "gap": "12px"
+            "information_architecture": {{
+                "content_hierarchy": "内容层级和重要性划分",
+                "navigation_flow": "用户导航流程和路径",
+                "content_grouping": "内容分组和关联关系"
             }},
-            "alignment": {{
-                "horizontal": "center",
-                "vertical": "top"
+            "responsive_requirements": {{
+                "breakpoint_behavior": "不同断点下的布局行为需求",
+                "content_priority": "内容在不同屏幕尺寸下的优先级",
+                "interaction_adaptation": "交互方式在不同设备上的适配需求"
+            }},
+            "ux_requirements": {{
+                "visual_hierarchy": "视觉层次和引导需求",
+                "scan_patterns": "用户浏览模式和视觉流",
+                "accessibility": "无障碍访问的布局要求"
             }}
         }}
         
-        确保：
-        1. type字段必须是: grid, flex, absolute, flow 之一
-        2. sections数组包含页面的主要区域划分
-        3. 每个section包含name, position, size, components属性
-        4. responsive设为true或false
-        5. 提供合理的breakpoints、spacing、alignment配置
+        注意：
+        1. 专注于布局的功能性和用户体验需求
+        2. 不要涉及具体的CSS实现细节
+        3. 考虑信息架构和用户认知
+        4. 验收标准要基于用户行为和业务目标
         """
     
     def _get_styling_analysis_prompt(self) -> str:
@@ -1472,41 +1480,57 @@ class RequirementAnalyzer(BaseModule):
         return """
         {language_instruction}
         
-        为交互需求进行详细分析: {requirement_description}
+        对交互需求进行详细的需求分析: {requirement_description}
         
-        基于原始需求: {original_text}
+        基于原始需求文档: {original_text}
         
-        请分析并返回交互规格的JSON数组格式，只需要返回JSON数组，不要添加任何解释或标记：
+        请从需求分析的角度深入分析这个交互需求，输出详细的需求规格说明。请返回JSON格式：
         
-        [
-            {{
-                "trigger": "click",
-                "action": "transform",
-                "target": "task_item",
-                "conditions": [],
-                "feedback": "视觉：文本出现/消失删除线，颜色在灰色（已完成）与默认色（待办）之间切换；列表项立即更新无延迟",
-                "validation": null
+        {{
+            "requirement_details": {{
+                "detailed_description": "对该交互需求的详细描述，包括交互目的、使用场景、预期效果",
+                "user_stories": [
+                    "作为用户，当我执行某个操作时，我希望...",
+                    "在特定情况下，系统应该提供..."
+                ],
+                "business_value": "这个交互设计为业务和用户带来的价值",
+                "functional_requirements": [
+                    "必须支持的交互功能点1",
+                    "必须提供的用户反馈2"
+                ],
+                "acceptance_criteria": [
+                    "验收标准1：当用户点击时，在200ms内应该显示...",
+                    "验收标准2：当操作失败时，应该明确提示...",
+                    "验收标准3：支持键盘操作，Tab键顺序应该..."
+                ],
+                "error_scenarios": [
+                    "错误场景1：网络中断时的处理",
+                    "错误场景2：无效输入的反馈"
+                ]
             }},
-            {{
-                "trigger": "keyboard", 
-                "action": "submit",
-                "target": "task_input",
-                "conditions": ["focus_on_input"],
-                "feedback": "visual: 新增的任务立即出现在列表顶部，并短暂高亮",
-                "validation": {{
-                    "rules": ["input_not_empty"],
-                    "error_handling": "在输入框下方显示红色提示"任务内容不能为空""
-                }}
+            "interaction_flows": {{
+                "primary_flow": "主要交互流程的详细步骤",
+                "alternative_flows": "备选交互路径和分支",
+                "edge_cases": "边界情况和异常处理"
+            }},
+            "feedback_requirements": {{
+                "visual_feedback": "视觉反馈的需求说明",
+                "audio_feedback": "音频反馈需求（如适用）",
+                "haptic_feedback": "触觉反馈需求（如适用）",
+                "timing_requirements": "反馈时机和持续时间要求"
+            }},
+            "accessibility_requirements": {{
+                "keyboard_navigation": "键盘导航支持需求",
+                "screen_reader": "屏幕阅读器支持需求",
+                "motor_accessibility": "运动障碍用户的交互需求"
             }}
-        ]
+        }}
         
-        确保：
-        1. trigger字段必须是: click, hover, scroll, keyboard, focus, drag 之一
-        2. action字段必须是: navigate, submit, validate, show, hide, transform, toggle 之一
-        3. target字段指明受影响的组件或元素
-        4. conditions数组列出触发条件（可为空）
-        5. feedback描述用户反馈（视觉、听觉、触觉）
-        6. validation包含验证规则和错误处理（可为null）
+        注意：
+        1. 专注于交互的功能需求和用户体验
+        2. 不要涉及具体的JavaScript实现
+        3. 考虑所有可能的用户操作路径
+        4. 包含完整的错误处理需求
         """
     
     def _get_validation_prompt(self) -> str:
@@ -1574,3 +1598,155 @@ class RequirementAnalyzer(BaseModule):
         - 性能需求（速度、响应时间等）
         - 业务需求（业务逻辑和规则）
         """
+
+    def _parse_detailed_analysis(self, response: str) -> Optional[Dict[str, Any]]:
+        """解析详细需求分析的JSON响应"""
+        try:
+            # 清理响应，移除markdown代码块标记
+            cleaned_response = response.strip()
+            
+            # 移除 ```json 和 ``` 标记
+            if cleaned_response.startswith('```json'):
+                cleaned_response = cleaned_response[7:]
+            elif cleaned_response.startswith('```'):
+                cleaned_response = cleaned_response[3:]
+            
+            if cleaned_response.endswith('```'):
+                cleaned_response = cleaned_response[:-3]
+            
+            cleaned_response = cleaned_response.strip()
+            
+            # 解析JSON
+            if cleaned_response.startswith('{'):
+                data = json.loads(cleaned_response)
+                return data
+            else:
+                # 如果不是JSON格式，尝试从文本中提取信息
+                return self._extract_analysis_from_text(response)
+                
+        except json.JSONDecodeError as e:
+            # JSON解析失败，尝试文本解析
+            return self._extract_analysis_from_text(response)
+        except Exception as e:
+            self.error_occurred.emit(f"Error parsing detailed analysis: {str(e)}")
+            return None
+    
+    def _extract_analysis_from_text(self, text: str) -> Dict[str, Any]:
+        """从文本中提取分析信息的回退方法"""
+        # 简单的文本解析，提取关键信息
+        result = {
+            "requirement_details": {
+                "detailed_description": "",
+                "user_stories": [],
+                "business_value": "",
+                "functional_requirements": [],
+                "acceptance_criteria": [],
+                "constraints": [],
+                "assumptions": [],
+                "dependencies": [],
+                "risks": []
+            }
+        }
+        
+        # 尝试提取描述信息
+        lines = text.split('\n')
+        current_section = ""
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # 识别不同的段落
+            if "详细描述" in line or "描述" in line:
+                current_section = "description"
+            elif "用户故事" in line or "用户需求" in line:
+                current_section = "user_stories"
+            elif "验收标准" in line or "验收条件" in line:
+                current_section = "acceptance_criteria"
+            elif "业务价值" in line:
+                current_section = "business_value"
+            elif "功能需求" in line:
+                current_section = "functional_requirements"
+            elif "约束" in line:
+                current_section = "constraints"
+            elif "依赖" in line:
+                current_section = "dependencies"
+            elif "风险" in line:
+                current_section = "risks"
+            else:
+                # 内容行
+                if current_section == "description" and result["requirement_details"]["detailed_description"] == "":
+                    result["requirement_details"]["detailed_description"] = line
+                elif current_section in ["user_stories", "acceptance_criteria", "functional_requirements", "constraints", "dependencies", "risks"]:
+                    if line.startswith(('- ', '• ', '1. ', '2. ', '3. ')):
+                        result["requirement_details"][current_section].append(line[2:].strip())
+                    elif line:
+                        result["requirement_details"][current_section].append(line)
+                elif current_section == "business_value" and result["requirement_details"]["business_value"] == "":
+                    result["requirement_details"]["business_value"] = line
+        
+        return result
+    
+    def _update_requirement_with_analysis(self, requirement: Requirement, analysis_result: Dict[str, Any]):
+        """使用详细分析结果更新需求对象"""
+        try:
+            req_details = analysis_result.get("requirement_details", {})
+            
+            # 更新详细描述
+            if req_details.get("detailed_description"):
+                requirement.description = req_details["detailed_description"]
+            
+            # 更新业务理由
+            if req_details.get("business_value"):
+                requirement.rationale = req_details["business_value"]
+            
+            # 更新验收标准
+            if req_details.get("acceptance_criteria"):
+                requirement.acceptance_criteria = req_details["acceptance_criteria"]
+            
+            # 更新依赖关系（转换为字符串列表）
+            if req_details.get("dependencies"):
+                # 这里暂时存储为描述性文本，实际项目中可能需要解析为具体的需求ID
+                requirement.dependencies = [str(dep) for dep in req_details["dependencies"]]
+            
+            # 在source字段中记录用户故事
+            if req_details.get("user_stories"):
+                user_stories_text = "\n".join([f"- {story}" for story in req_details["user_stories"]])
+                requirement.source = f"用户故事:\n{user_stories_text}"
+            
+            # 在tags中添加风险和约束信息
+            if req_details.get("risks"):
+                for risk in req_details["risks"]:
+                    requirement.tags.append(f"风险: {risk}")
+            
+            if req_details.get("constraints"):
+                for constraint in req_details["constraints"]:
+                    requirement.tags.append(f"约束: {constraint}")
+            
+            # 如果有布局考虑，创建布局规格对象
+            if "layout_considerations" in analysis_result:
+                layout_info = analysis_result["layout_considerations"]
+                requirement.layout_spec = LayoutSpec(
+                    type="custom",
+                    sections=[],
+                    responsive=True,
+                    breakpoints={},
+                    spacing={},
+                    alignment={}
+                )
+            
+            # 如果有UX考虑，可以记录在其他字段中
+            if "ux_considerations" in analysis_result:
+                ux_info = analysis_result["ux_considerations"]
+                # 将UX考虑作为非功能性需求添加到验收标准中
+                if ux_info.get("usability"):
+                    requirement.acceptance_criteria.append(f"易用性要求: {ux_info['usability']}")
+                if ux_info.get("accessibility"):
+                    requirement.acceptance_criteria.append(f"无障碍要求: {ux_info['accessibility']}")
+            
+            # 更新时间戳
+            requirement.updated_at = datetime.now()
+            
+        except Exception as e:
+            self.error_occurred.emit(f"Error updating requirement with analysis: {str(e)}")

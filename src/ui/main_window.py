@@ -785,7 +785,7 @@ class MainWindow(QMainWindow):
         
         # Convert dict back to AnalysisResult if needed
         if isinstance(result, dict):
-            self.current_requirements_result = AnalysisResult(**result)
+            self.current_requirements_result = AnalysisResult.from_dict(result)
         else:
             self.current_requirements_result = result
         
@@ -803,9 +803,18 @@ class MainWindow(QMainWindow):
     
     def on_requirements_analysis_finished(self, result):
         """Handle requirements analysis completion"""
-        self.current_requirements_result = result
-        self.display_requirements_result(result)
+        from core.requirement_analyzer.models import AnalysisResult
+        
+        # Convert dict back to AnalysisResult if needed
+        if isinstance(result, dict):
+            self.current_requirements_result = AnalysisResult.from_dict(result)
+        else:
+            self.current_requirements_result = result
+            
+        self.display_requirements_result(self.current_requirements_result)
         self.analyze_requirements_btn.setEnabled(True)
+        self.extract_list_btn.setEnabled(True)
+        self.detailed_analysis_btn.setEnabled(True)
         self.export_req_json_btn.setEnabled(True)
         self.export_req_txt_btn.setEnabled(True)
         self.req_status_label.setText(tr('analysis_completed'))

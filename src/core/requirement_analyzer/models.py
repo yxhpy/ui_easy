@@ -57,6 +57,26 @@ class ComponentSpec:
             'validation': self.validation,
             'accessibility': self.accessibility
         }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ComponentSpec':
+        """Create ComponentSpec from dictionary"""
+        children = []
+        for child_data in data.get('children', []):
+            if isinstance(child_data, dict):
+                children.append(cls.from_dict(child_data))
+            elif hasattr(child_data, 'to_dict'):
+                children.append(child_data)
+        
+        return cls(
+            name=data.get('name', ''),
+            type=data.get('type', ''),
+            properties=data.get('properties', {}),
+            children=children,
+            events=data.get('events', []),
+            validation=data.get('validation'),
+            accessibility=data.get('accessibility')
+        )
 
 @dataclass
 class LayoutSpec:
@@ -77,6 +97,18 @@ class LayoutSpec:
             'spacing': self.spacing,
             'alignment': self.alignment
         }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'LayoutSpec':
+        """Create LayoutSpec from dictionary"""
+        return cls(
+            type=data.get('type', ''),
+            sections=data.get('sections', []),
+            responsive=data.get('responsive', True),
+            breakpoints=data.get('breakpoints'),
+            spacing=data.get('spacing'),
+            alignment=data.get('alignment')
+        )
 
 @dataclass
 class StyleSpec:
@@ -99,6 +131,19 @@ class StyleSpec:
             'shadows': self.shadows,
             'animations': self.animations
         }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'StyleSpec':
+        """Create StyleSpec from dictionary"""
+        return cls(
+            theme=data.get('theme'),
+            colors=data.get('colors', {}),
+            typography=data.get('typography', {}),
+            spacing=data.get('spacing', {}),
+            borders=data.get('borders', {}),
+            shadows=data.get('shadows', {}),
+            animations=data.get('animations', [])
+        )
 
 @dataclass
 class InteractionSpec:
@@ -119,6 +164,18 @@ class InteractionSpec:
             'feedback': self.feedback,
             'validation': self.validation
         }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'InteractionSpec':
+        """Create InteractionSpec from dictionary"""
+        return cls(
+            trigger=data.get('trigger', ''),
+            action=data.get('action', ''),
+            target=data.get('target', ''),
+            conditions=data.get('conditions', []),
+            feedback=data.get('feedback'),
+            validation=data.get('validation')
+        )
 
 @dataclass
 class Requirement:
@@ -174,6 +231,67 @@ class Requirement:
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat()
         }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'Requirement':
+        """Create Requirement from dictionary"""
+        # Convert enum strings back to enum values
+        req_type = RequirementType(data.get('type', 'functional'))
+        priority = RequirementPriority(data.get('priority', 'medium'))
+        status = RequirementStatus(data.get('status', 'identified'))
+        
+        # Convert nested specs
+        component_spec = None
+        if data.get('component_spec'):
+            component_spec = ComponentSpec.from_dict(data['component_spec'])
+        
+        layout_spec = None
+        if data.get('layout_spec'):
+            layout_spec = LayoutSpec.from_dict(data['layout_spec'])
+        
+        style_spec = None
+        if data.get('style_spec'):
+            style_spec = StyleSpec.from_dict(data['style_spec'])
+        
+        interaction_specs = []
+        for spec_data in data.get('interaction_specs', []):
+            if isinstance(spec_data, dict):
+                interaction_specs.append(InteractionSpec.from_dict(spec_data))
+            elif hasattr(spec_data, 'to_dict'):
+                interaction_specs.append(spec_data)
+        
+        # Convert timestamps
+        created_at = datetime.now()
+        updated_at = datetime.now()
+        try:
+            if data.get('created_at'):
+                created_at = datetime.fromisoformat(data['created_at'])
+            if data.get('updated_at'):
+                updated_at = datetime.fromisoformat(data['updated_at'])
+        except (ValueError, TypeError):
+            pass  # Use default datetime if parsing fails
+        
+        return cls(
+            id=data.get('id', str(uuid.uuid4())),
+            title=data.get('title', ''),
+            description=data.get('description', ''),
+            type=req_type,
+            priority=priority,
+            status=status,
+            component_spec=component_spec,
+            layout_spec=layout_spec,
+            style_spec=style_spec,
+            interaction_specs=interaction_specs,
+            dependencies=data.get('dependencies', []),
+            conflicts=data.get('conflicts', []),
+            source=data.get('source', ''),
+            rationale=data.get('rationale', ''),
+            acceptance_criteria=data.get('acceptance_criteria', []),
+            estimated_effort=data.get('estimated_effort'),
+            tags=data.get('tags', []),
+            created_at=created_at,
+            updated_at=updated_at
+        )
 
 @dataclass
 class AnalysisResult:
@@ -214,6 +332,33 @@ class AnalysisResult:
             'total_estimated_effort': self.total_estimated_effort,
             'development_phases': self.development_phases
         }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'AnalysisResult':
+        """Create AnalysisResult from dictionary"""
+        # Convert requirement dicts back to Requirement objects
+        requirements = []
+        for req_data in data.get('requirements', []):
+            if isinstance(req_data, dict):
+                requirements.append(Requirement.from_dict(req_data))
+            elif hasattr(req_data, 'to_dict'):  # Already a Requirement object
+                requirements.append(req_data)
+        
+        return cls(
+            requirements=requirements,
+            project_overview=data.get('project_overview', ''),
+            target_audience=data.get('target_audience', ''),
+            platform=data.get('platform', ''),
+            framework_recommendations=data.get('framework_recommendations', []),
+            completeness_score=data.get('completeness_score', 0.0),
+            clarity_score=data.get('clarity_score', 0.0),
+            feasibility_score=data.get('feasibility_score', 0.0),
+            gaps=data.get('gaps', []),
+            ambiguities=data.get('ambiguities', []),
+            recommendations=data.get('recommendations', []),
+            total_estimated_effort=data.get('total_estimated_effort'),
+            development_phases=data.get('development_phases', [])
+        )
     
     def get_requirements_by_type(self, req_type: RequirementType) -> List[Requirement]:
         """Get all requirements of a specific type"""

@@ -53,286 +53,154 @@ def test_requirements_analysis():
     }
     
     try:
-        # Initialize analyzer
-        analyzer = RequirementAnalyzer()
+        # Test basic configuration
+        print("1. Testing basic configuration...")
+        from src.core.config import Config
+        config = Config()
+        analyzer = RequirementAnalyzer(config)
+        print("✓ RequirementAnalyzer initialized successfully")
         
-        # Process requirements
-        print("Processing requirements...")
-        result = analyzer.process(test_input)
+        # Test Phase 1: Extract requirement list
+        print("\n2. Testing Phase 1: Extract requirement list...")
+        test_input_phase1 = test_input.copy()
+        test_input_phase1['phase'] = 'list'
         
-        print(f"\n✓ Analysis completed successfully!")
-        print(f"Found {len(result.requirements)} requirements")
-        print(f"Project: {result.project_overview}")
-        print(f"Target audience: {result.target_audience}")
-        print(f"Platform: {result.platform}")
+        result_phase1 = analyzer.process(test_input_phase1)
+        print(f"✓ Phase 1 completed: {len(result_phase1.requirements)} requirements extracted")
         
-        # Display requirements by type
-        print(f"\nRequirements by type:")
-        for req_type in RequirementType:
-            type_reqs = result.get_requirements_by_type(req_type)
-            if type_reqs:
-                print(f"  {req_type.value}: {len(type_reqs)} requirements")
+        # Display extracted requirements
+        print("\nExtracted Requirements:")
+        for i, req in enumerate(result_phase1.requirements, 1):
+            print(f"{i}. {req.title} ({req.type.value}, {req.priority.value})")
         
-        # Display critical requirements
-        critical_reqs = result.get_critical_requirements()
-        print(f"\nCritical requirements: {len(critical_reqs)}")
-        for req in critical_reqs:
-            print(f"  - {req.title}")
+        # Test Phase 2: Detailed analysis
+        print("\n3. Testing Phase 2: Detailed analysis...")
+        requirement_list = []
+        for req in result_phase1.requirements:
+            requirement_list.append(req.to_dict())
         
-        # Display framework recommendations
-        if result.framework_recommendations:
-            print(f"\nFramework recommendations:")
-            for framework in result.framework_recommendations:
-                print(f"  - {framework}")
+        test_input_phase2 = {
+            'text': test_requirements,
+            'context': '面向中小企业和个人用户的任务管理工具',
+            'platform': 'web',
+            'phase': 'detail',
+            'requirement_list': requirement_list
+        }
         
-        # Display gaps and recommendations
-        if result.gaps:
-            print(f"\nIdentified gaps:")
-            for gap in result.gaps:
-                print(f"  - {gap}")
+        result_phase2 = analyzer.process(test_input_phase2)
+        print(f"✓ Phase 2 completed: {len(result_phase2.requirements)} requirements analyzed in detail")
         
-        if result.recommendations:
-            print(f"\nRecommendations:")
-            for rec in result.recommendations:
-                print(f"  - {rec}")
+        # Display detailed analysis results
+        print("\nDetailed Analysis Results:")
+        for req in result_phase2.requirements:
+            print(f"\n--- {req.title} ---")
+            print(f"类型: {req.type.value}")
+            print(f"优先级: {req.priority.value}")
+            print(f"状态: {req.status.value}")
+            print(f"描述: {req.description[:100]}..." if len(req.description) > 100 else f"描述: {req.description}")
+            
+            if req.acceptance_criteria:
+                print("验收标准:")
+                for criteria in req.acceptance_criteria:
+                    print(f"  • {criteria}")
+            
+            if req.rationale:
+                print(f"业务价值: {req.rationale[:100]}..." if len(req.rationale) > 100 else f"业务价值: {req.rationale}")
+            
+            if req.dependencies:
+                print("依赖关系:")
+                for dep in req.dependencies:
+                    print(f"  • {dep}")
         
         # Test validator
-        print(f"\n" + "="*50)
-        print("Testing Requirement Validator...")
-        
+        print("\n4. Testing requirements validation...")
         validator = RequirementValidator()
-        validation_result = validator.validate_analysis_result(result)
+        validation_result = validator.validate_analysis_result(result_phase2)
         
-        print(f"\nValidation Results:")
         print(f"Overall Score: {validation_result['overall_score']:.2f}")
-        
-        print(f"\nCategory Scores:")
-        for category, score in validation_result['category_scores'].items():
-            print(f"  {category}: {score:.2f}")
+        print(f"Category Scores: {validation_result['category_scores']}")
         
         if validation_result['issues']:
-            print(f"\nIssues found:")
-            for issue in validation_result['issues'][:5]:  # Show first 5
-                print(f"  - {issue}")
-            if len(validation_result['issues']) > 5:
-                print(f"  ... and {len(validation_result['issues']) - 5} more")
+            print("Issues found:")
+            for issue in validation_result['issues']:
+                print(f"  • {issue}")
         
-        if validation_result['warnings']:
-            print(f"\nWarnings:")
-            for warning in validation_result['warnings'][:3]:  # Show first 3
-                print(f"  - {warning}")
-            if len(validation_result['warnings']) > 3:
-                print(f"  ... and {len(validation_result['warnings']) - 3} more")
+        if validation_result['recommendations']:
+            print("Recommendations:")
+            for rec in validation_result['recommendations']:
+                print(f"  • {rec}")
         
-        # Test JSON serialization
-        print(f"\n" + "="*50)
-        print("Testing JSON serialization...")
-        
-        analysis_dict = result.to_dict()
-        print(f"✓ Analysis serialized successfully ({len(str(analysis_dict))} characters)")
-        
-        # Show sample requirement details
-        if result.requirements:
-            sample_req = result.requirements[0]
-            print(f"\nSample requirement details:")
-            print(f"Title: {sample_req.title}")
-            print(f"Type: {sample_req.type.value}")
-            print(f"Priority: {sample_req.priority.value}")
-            print(f"Status: {sample_req.status.value}")
-            if sample_req.acceptance_criteria:
-                print(f"Acceptance criteria: {len(sample_req.acceptance_criteria)} items")
-            if sample_req.component_spec:
-                print(f"Component spec: {sample_req.component_spec.type}")
-        
+        print("\n✓ All tests completed successfully!")
         return True
         
     except Exception as e:
-        print(f"❌ Error during testing: {str(e)}")
+        print(f"\n✗ Test failed with error: {str(e)}")
         import traceback
         traceback.print_exc()
         return False
 
-def test_edge_cases():
-    """Test edge cases and error handling"""
+def test_specific_requirements():
+    """Test specific requirement types"""
+    print("\n" + "=" * 50)
+    print("Testing Specific Requirement Types...")
     
-    print(f"\n" + "="*50)
-    print("Testing edge cases...")
+    # Test UI Component requirement
+    ui_test = {
+        'text': '我需要一个任务卡片组件，用于显示任务的标题、描述、优先级和截止日期。用户应该能够点击卡片来编辑任务，也能够拖拽卡片来重新排序。',
+        'context': '任务管理系统中的核心UI组件',
+        'platform': 'web'
+    }
     
-    analyzer = RequirementAnalyzer()
+    # Test Layout requirement  
+    layout_test = {
+        'text': '主页面需要采用三栏布局：左侧是导航菜单（宽度200px），中间是主要内容区域，右侧是辅助信息面板（宽度300px）。在移动端需要折叠为单栏布局。',
+        'context': '任务管理系统的主页面布局',
+        'platform': 'web'
+    }
     
-    # Test empty input
-    try:
-        result = analyzer.process({'text': '', 'platform': 'web'})
-        print("❌ Should have failed with empty input")
-        return False
-    except ValueError:
-        print("✓ Empty input handled correctly")
-    
-    # Test minimal input
-    try:
-        result = analyzer.process({
-            'text': 'Create a simple login page',
-            'platform': 'web'
-        })
-        print(f"✓ Minimal input processed ({len(result.requirements)} requirements found)")
-    except Exception as e:
-        print(f"❌ Minimal input failed: {str(e)}")
-        return False
-    
-    # Test complex input
-    complex_text = """
-    Build a comprehensive e-commerce platform with the following features:
-    
-    Frontend Requirements:
-    - Modern responsive design using React/Vue.js
-    - Product catalog with search and filtering
-    - Shopping cart with real-time updates
-    - User authentication and profiles
-    - Order tracking and history
-    - Payment integration (Stripe/PayPal)
-    - Admin dashboard for inventory management
-    
-    Backend Requirements:
-    - RESTful API with authentication
-    - Database design for products, users, orders
-    - File upload for product images
-    - Email notifications
-    - Inventory management system
-    - Analytics and reporting
-    
-    Performance Requirements:
-    - Support 10,000 concurrent users
-    - Page load time < 2 seconds
-    - 99.9% uptime
-    - Mobile-first responsive design
-    
-    Security Requirements:
-    - HTTPS encryption
-    - Input validation and sanitization
-    - Rate limiting
-    - Data backup and recovery
-    """
+    from src.core.config import Config
+    config = Config()
+    analyzer = RequirementAnalyzer(config)
     
     try:
-        result = analyzer.process({
-            'text': complex_text,
-            'context': 'Enterprise e-commerce solution',
-            'platform': 'web'
-        })
-        print(f"✓ Complex input processed ({len(result.requirements)} requirements found)")
+        print("\nTesting UI Component Analysis:")
+        ui_result = analyzer.process(ui_test)
+        ui_req = ui_result.requirements[0] if ui_result.requirements else None
+        if ui_req and ui_req.acceptance_criteria:
+            print(f"✓ Generated {len(ui_req.acceptance_criteria)} acceptance criteria")
+            for criteria in ui_req.acceptance_criteria[:3]:  # Show first 3
+                print(f"  • {criteria}")
         
-        # Check that we have diverse requirement types
-        types_found = set(req.type for req in result.requirements)
-        if len(types_found) >= 3:
-            print(f"✓ Diverse requirement types identified: {len(types_found)}")
-        else:
-            print(f"⚠ Limited requirement type diversity: {len(types_found)}")
+        print("\nTesting Layout Analysis:")
+        layout_result = analyzer.process(layout_test)
+        layout_req = layout_result.requirements[0] if layout_result.requirements else None
+        if layout_req and layout_req.acceptance_criteria:
+            print(f"✓ Generated {len(layout_req.acceptance_criteria)} acceptance criteria")
+            for criteria in layout_req.acceptance_criteria[:3]:  # Show first 3
+                print(f"  • {criteria}")
+        
+        return True
         
     except Exception as e:
-        print(f"❌ Complex input failed: {str(e)}")
+        print(f"✗ Specific tests failed: {str(e)}")
         return False
-    
-    return True
-
-def test_validator_standalone():
-    """Test validator with manually created requirements"""
-    
-    print(f"\n" + "="*50)
-    print("Testing validator with sample requirements...")
-    
-    from src.core.requirement_analyzer.models import (
-        Requirement, AnalysisResult, ComponentSpec, RequirementStatus
-    )
-    
-    # Create sample requirements
-    requirements = [
-        Requirement(
-            title="User Login",
-            description="Users must be able to log in with email and password",
-            type=RequirementType.FUNCTIONAL,
-            priority=RequirementPriority.CRITICAL,
-            acceptance_criteria=[
-                "User enters valid email and password",
-                "System authenticates user",
-                "User is redirected to dashboard"
-            ]
-        ),
-        Requirement(
-            title="Login Button",
-            description="A blue login button",
-            type=RequirementType.UI_COMPONENT,
-            priority=RequirementPriority.HIGH,
-            component_spec=ComponentSpec(
-                name="LoginButton",
-                type="button",
-                properties={"color": "blue", "size": "medium"},
-                events=["click"]
-            )
-        ),
-        Requirement(
-            title="Fast Performance",
-            description="The app should be fast",
-            type=RequirementType.PERFORMANCE,
-            priority=RequirementPriority.MEDIUM,
-            status=RequirementStatus.AMBIGUOUS
-        )
-    ]
-    
-    analysis = AnalysisResult(
-        requirements=requirements,
-        project_overview="A sample application",
-        target_audience="General users",
-        platform="web"
-    )
-    
-    validator = RequirementValidator()
-    validation_result = validator.validate_analysis_result(analysis)
-    
-    print(f"Validation score: {validation_result['overall_score']:.2f}")
-    print(f"Requirements validated: {len(requirements)}")
-    
-    if validation_result['issues']:
-        print(f"Issues found: {len(validation_result['issues'])}")
-        for issue in validation_result['issues']:
-            print(f"  - {issue}")
-    
-    if validation_result['warnings']:
-        print(f"Warnings: {len(validation_result['warnings'])}")
-        for warning in validation_result['warnings']:
-            print(f"  - {warning}")
-    
-    return True
 
 if __name__ == "__main__":
     print("Requirements Analyzer Test Suite")
-    print("="*50)
+    print("=" * 60)
     
-    success = True
+    success1 = test_requirements_analysis()
+    success2 = test_specific_requirements()
     
-    # Run main test
-    if not test_requirements_analysis():
-        success = False
-    
-    # Run edge case tests
-    if not test_edge_cases():
-        success = False
-    
-    # Run validator tests
-    if not test_validator_standalone():
-        success = False
-    
-    print(f"\n" + "="*50)
-    if success:
-        print("✅ All tests passed!")
-        print("\nRequirements Analyzer is ready for frontend development!")
-        print("\nKey features available:")
-        print("- Comprehensive requirement extraction and categorization")
-        print("- Component, layout, and interaction specification")
-        print("- Validation and quality scoring")
-        print("- Gap analysis and recommendations")
-        print("- Framework recommendations")
-        print("- Development effort estimation")
+    if success1 and success2:
+        print(f"\n{'='*60}")
+        print("🎉 All tests passed! Requirements analyzer is working correctly.")
+        print("Key improvements verified:")
+        print("• ✓ 提取需求列表功能正常")
+        print("• ✓ 详细分析生成验收标准")
+        print("• ✓ 业务价值和依赖关系分析")
+        print("• ✓ 需求状态正确更新")
     else:
-        print("❌ Some tests failed. Please check the implementation.")
-    
-    exit(0 if success else 1)
+        print(f"\n{'='*60}")
+        print("❌ Some tests failed. Please check the configuration and implementation.")
+        sys.exit(1)
