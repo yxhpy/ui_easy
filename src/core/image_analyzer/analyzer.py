@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional, List
 from PIL import Image
 from ..base_module import BaseModule
 from ..config import Config
-from ...models.model_factory import ModelFactory
+from models.model_factory import ModelFactory
 
 class ImageAnalyzer(BaseModule):
     """Analyzes design images using powerful AI models"""

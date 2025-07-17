@@ -4,7 +4,7 @@ Base model class for all AI model providers
 
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List
-from ..core.config import ModelConfig
+from core.config import ModelConfig
 
 class BaseModel(ABC):
     """Base class for all AI model implementations"""
@@ -38,6 +38,12 @@ class BaseModel(ABC):
     def generate(self, prompt: str, **kwargs) -> str:
         """Generate text from prompt (alias for generate_text)"""
         return self.generate_text(prompt, **kwargs)
+    
+    def generate_stream(self, prompt: str, **kwargs):
+        """Generate text with streaming (default implementation)"""
+        # Default implementation falls back to non-streaming
+        result = self.generate_text(prompt, **kwargs)
+        yield result
     
     def chat(self, messages: List[Dict[str, str]], **kwargs) -> str:
         """Chat with the model using message history"""

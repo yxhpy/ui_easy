@@ -68,6 +68,17 @@ class Config:
         """Get application setting"""
         return self.app_settings.get(key, default)
     
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get configuration value (generic method for compatibility)"""
+        # Check if it's a model config request
+        if key == 'model_config':
+            # For model_config, return the config name (default parameter), not the config object
+            # This is because create_model() expects a config name, not a config object
+            return default if default is not None else 'default'
+        # Otherwise treat as app setting
+        else:
+            return self.get_app_setting(key, default)
+    
     def set_model_config(self, name: str, config: ModelConfig):
         """Set model configuration"""
         self.models[name] = config

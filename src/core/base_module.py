@@ -3,7 +3,7 @@ Base module class for all core functionality modules
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from PyQt5.QtCore import QObject, pyqtSignal
 
 class QObjectMeta(type(QObject), type(ABC)):
@@ -20,7 +20,7 @@ class BaseModule(QObject, ABC, metaclass=QObjectMeta):
     completed = pyqtSignal(object)      # Result object
     streaming_text_updated = pyqtSignal(str)  # Streaming text chunk
     
-    def __init__(self, name: str, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, name: str, config: Optional[Union['Config', Dict[str, Any]]] = None):
         super().__init__()
         self.name = name
         self.config = config or {}

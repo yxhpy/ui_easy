@@ -6,7 +6,7 @@ from typing import Dict, Type, Optional
 from .base_model import BaseModel
 from .openai_model import OpenAIModel
 from .deepseek_model import DeepSeekModel
-from ..core.config import Config, ModelConfig
+from core.config import Config, ModelConfig
 
 class ModelFactory:
     """Factory for creating AI model instances"""

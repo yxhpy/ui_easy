@@ -7,8 +7,8 @@ import re
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 
-from ..base_module import BaseModule
-from ...models.model_factory import ModelFactory
+from core.base_module import BaseModule
+from models.model_factory import ModelFactory
 from .models import (
     Requirement, RequirementType, RequirementPriority, RequirementStatus,
     ComponentSpec, LayoutSpec, StyleSpec, InteractionSpec, AnalysisResult
@@ -19,9 +19,9 @@ class RequirementAnalyzer(BaseModule):
     Analyzes user input to extract and structure UI/UX requirements
     """
     
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, config):
         super().__init__("RequirementAnalyzer", config)
-        self.model_factory = ModelFactory()
+        self.model_factory = ModelFactory(config)
         
         # Analysis prompts for different aspects
         self.prompts = {
@@ -86,7 +86,8 @@ class RequirementAnalyzer(BaseModule):
     def _analyze_project_overview(self, requirements_text: str, context: str) -> Tuple[str, str]:
         """Extract project overview and target audience"""
         try:
-            model = self.model_factory.create_model(self.get_config('model_config', 'default'))
+            # 直接使用default模型配置
+            model = self.model_factory.create_model('default')
             
             prompt = f"""
             Analyze the following requirements and provide:
@@ -106,11 +107,42 @@ class RequirementAnalyzer(BaseModule):
             }}
             """
             
-            response = model.generate(prompt)
+            # 尝试使用流式输出
+            response = ""
+            try:
+                # 发送分析开始的提示
+                self.streaming_text_updated.emit("🔍 正在分析项目概述...\n\n")
+                
+                if hasattr(model, 'generate_stream'):
+                    for chunk in model.generate_stream(prompt):
+                        response += chunk
+                        self.streaming_text_updated.emit(chunk)
+                else:
+                    response = model.generate(prompt)
+                    self.streaming_text_updated.emit(response)
+            except Exception as stream_error:
+                # 流式输出失败，使用普通输出
+                response = model.generate(prompt)
+                self.streaming_text_updated.emit(response)
+            
+            self.streaming_text_updated.emit("\n\n" + "="*50 + "\n\n")
             
             try:
                 result = json.loads(response)
-                return result.get('project_overview', ''), result.get('target_audience', '')
+                # 检查result是否为字典
+                if isinstance(result, dict):
+                    return result.get('project_overview', ''), result.get('target_audience', '')
+                elif isinstance(result, list) and len(result) > 0:
+                    # 如果返回的是列表，尝试从第一个元素获取信息
+                    first_item = result[0]
+                    if isinstance(first_item, dict):
+                        return first_item.get('project_overview', ''), first_item.get('target_audience', '')
+                    else:
+                        # 如果列表元素不是字典，使用fallback
+                        return self._extract_overview_fallback(response)
+                else:
+                    # 其他情况使用fallback
+                    return self._extract_overview_fallback(response)
             except json.JSONDecodeError:
                 # Fallback parsing
                 return self._extract_overview_fallback(response)
@@ -122,7 +154,7 @@ class RequirementAnalyzer(BaseModule):
     def _extract_requirements(self, requirements_text: str, context: str, platform: str) -> List[Requirement]:
         """Extract individual requirements from text"""
         try:
-            model = self.model_factory.create_model(self.get_config('model_config', 'default'))
+            model = self.model_factory.create_model('default')
             
             prompt = self.prompts['initial_analysis'].format(
                 requirements_text=requirements_text,
@@ -130,7 +162,23 @@ class RequirementAnalyzer(BaseModule):
                 platform=platform
             )
             
-            response = model.generate(prompt)
+            # 流式输出需求提取过程
+            response = ""
+            try:
+                self.streaming_text_updated.emit("📋 正在提取和分类需求...\n\n")
+                
+                if hasattr(model, 'generate_stream'):
+                    for chunk in model.generate_stream(prompt):
+                        response += chunk
+                        self.streaming_text_updated.emit(chunk)
+                else:
+                    response = model.generate(prompt)
+                    self.streaming_text_updated.emit(response)
+            except Exception:
+                response = model.generate(prompt)
+                self.streaming_text_updated.emit(response)
+            
+            self.streaming_text_updated.emit("\n\n" + "="*50 + "\n\n")
             
             # Parse the response and create Requirement objects
             return self._parse_requirements_response(response, requirements_text)
@@ -144,24 +192,46 @@ class RequirementAnalyzer(BaseModule):
         ui_requirements = [req for req in requirements if req.type == RequirementType.UI_COMPONENT]
         
         if not ui_requirements:
+            self.streaming_text_updated.emit("⚠️ 未找到UI组件需求，跳过组件分析。\n\n")
             return
         
         try:
-            model = self.model_factory.create_model(self.get_config('model_config', 'default'))
+            model = self.model_factory.create_model('default')
             
-            for requirement in ui_requirements:
+            self.streaming_text_updated.emit(f"🎨 正在分析 {len(ui_requirements)} 个UI组件...\n\n")
+            
+            for i, requirement in enumerate(ui_requirements, 1):
+                self.streaming_text_updated.emit(f"分析组件 {i}/{len(ui_requirements)}: {requirement.title}\n")
+                
                 prompt = self.prompts['component_extraction'].format(
                     requirement_title=requirement.title,
                     requirement_description=requirement.description,
                     original_text=original_text
                 )
                 
-                response = model.generate(prompt)
+                response = ""
+                try:
+                    if hasattr(model, 'generate_stream'):
+                        for chunk in model.generate_stream(prompt):
+                            response += chunk
+                            self.streaming_text_updated.emit(chunk)
+                    else:
+                        response = model.generate(prompt)
+                        self.streaming_text_updated.emit(response)
+                except Exception:
+                    response = model.generate(prompt)
+                    self.streaming_text_updated.emit(response)
+                
                 component_spec = self._parse_component_spec(response)
                 
                 if component_spec:
                     requirement.component_spec = component_spec
                     requirement.status = RequirementStatus.ANALYZED
+                    self.streaming_text_updated.emit(f"\n✅ 组件 {requirement.title} 分析完成\n\n")
+                else:
+                    self.streaming_text_updated.emit(f"\n⚠️ 组件 {requirement.title} 分析失败\n\n")
+            
+            self.streaming_text_updated.emit("="*50 + "\n\n")
                     
         except Exception as e:
             self.error_occurred.emit(f"Error analyzing components: {str(e)}")
@@ -172,7 +242,7 @@ class RequirementAnalyzer(BaseModule):
         interaction_requirements = [req for req in requirements if req.type == RequirementType.INTERACTION]
         
         try:
-            model = self.model_factory.create_model(self.get_config('model_config', 'default'))
+            model = self.model_factory.create_model('default')
             
             # Analyze layout requirements
             for requirement in layout_requirements:
@@ -254,11 +324,42 @@ class RequirementAnalyzer(BaseModule):
         requirements = []
         
         try:
+            # 清理响应，移除markdown代码块标记
+            cleaned_response = response.strip()
+            
+            # 移除 ```json 和 ``` 标记
+            if cleaned_response.startswith('```json'):
+                cleaned_response = cleaned_response[7:]  # 移除 ```json
+            elif cleaned_response.startswith('```'):
+                cleaned_response = cleaned_response[3:]   # 移除 ```
+            
+            if cleaned_response.endswith('```'):
+                cleaned_response = cleaned_response[:-3]  # 移除结尾的 ```
+            
+            cleaned_response = cleaned_response.strip()
+            
             # Try to parse as JSON first
-            if response.strip().startswith('{') or response.strip().startswith('['):
-                data = json.loads(response)
-                if isinstance(data, dict) and 'requirements' in data:
-                    data = data['requirements']
+            if cleaned_response.startswith('{') or cleaned_response.startswith('['):
+                data = json.loads(cleaned_response)
+                
+                # 处理不同的数据结构
+                if isinstance(data, dict):
+                    if 'requirements' in data:
+                        data = data['requirements']
+                    else:
+                        # 如果是单个需求对象的字典，包装成列表
+                        data = [data]
+                elif isinstance(data, list):
+                    # 已经是列表，直接使用
+                    pass
+                else:
+                    # 不支持的数据类型，使用fallback
+                    requirements = self._parse_requirements_text(cleaned_response, original_text)
+                    return requirements
+                
+                # 确保data是列表
+                if not isinstance(data, list):
+                    data = [data]
                 
                 for item in data:
                     req = self._create_requirement_from_dict(item, original_text)
@@ -266,10 +367,11 @@ class RequirementAnalyzer(BaseModule):
                         requirements.append(req)
             else:
                 # Fallback to text parsing
-                requirements = self._parse_requirements_text(response, original_text)
+                requirements = self._parse_requirements_text(cleaned_response, original_text)
                 
-        except (json.JSONDecodeError, KeyError):
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
             # Fallback to text parsing
+            self.error_occurred.emit(f"JSON parsing failed: {str(e)}, using text parsing fallback")
             requirements = self._parse_requirements_text(response, original_text)
         
         return requirements
@@ -277,6 +379,11 @@ class RequirementAnalyzer(BaseModule):
     def _create_requirement_from_dict(self, data: Dict[str, Any], source: str) -> Optional[Requirement]:
         """Create a Requirement object from dictionary data"""
         try:
+            # 首先检查data是否为字典类型
+            if not isinstance(data, dict):
+                self.error_occurred.emit(f"Expected dict but got {type(data).__name__}: {data}")
+                return None
+            
             req_type = RequirementType(data.get('type', 'functional'))
             priority = RequirementPriority(data.get('priority', 'medium'))
             
@@ -331,17 +438,141 @@ class RequirementAnalyzer(BaseModule):
     def _parse_component_spec(self, response: str) -> Optional[ComponentSpec]:
         """Parse component specification from AI response"""
         try:
-            if response.strip().startswith('{'):
-                data = json.loads(response)
+            # 清理响应，移除markdown代码块标记
+            cleaned_response = response.strip()
+            
+            # 移除 ```json 和 ``` 标记
+            if cleaned_response.startswith('```json'):
+                cleaned_response = cleaned_response[7:]  # 移除 ```json
+            elif cleaned_response.startswith('```'):
+                cleaned_response = cleaned_response[3:]   # 移除 ```
+            
+            if cleaned_response.endswith('```'):
+                cleaned_response = cleaned_response[:-3]  # 移除结尾的 ```
+            
+            cleaned_response = cleaned_response.strip()
+            
+            # 处理单个对象
+            if cleaned_response.startswith('{'):
+                data = json.loads(cleaned_response)
+                return self._create_component_spec_from_data(data)
+            
+            # 处理数组格式 - 通常取第一个主要组件
+            elif cleaned_response.startswith('['):
+                data_array = json.loads(cleaned_response)
+                if isinstance(data_array, list) and len(data_array) > 0:
+                    # 如果是数组，尝试找到主要组件（通常是第一个）
+                    main_component = data_array[0]
+                    
+                    # 创建主组件规格
+                    component_spec = self._create_component_spec_from_data(main_component)
+                    
+                    # 如果有子组件，将其作为children添加
+                    if len(data_array) > 1:
+                        for child_data in data_array[1:]:
+                            child_spec = self._create_component_spec_from_data(child_data)
+                            if child_spec:
+                                component_spec.children.append(child_spec)
+                    
+                    return component_spec
+            
+            # 尝试从文本中提取组件信息（fallback）
+            return self._parse_component_spec_fallback(cleaned_response)
+            
+        except (json.JSONDecodeError, KeyError, AttributeError) as e:
+            # 如果JSON解析失败，尝试文本解析
+            fallback_result = self._parse_component_spec_fallback(response)
+            if fallback_result is None:
+                # 如果fallback也失败，记录错误
+                self.error_occurred.emit(f"Component spec parsing failed: {str(e)}")
+            return fallback_result
+        except Exception as e:
+            # 记录错误但不中断流程
+            self.error_occurred.emit(f"Component spec parsing error: {str(e)}")
+            return None
+    
+    def _create_component_spec_from_data(self, data: Dict[str, Any]) -> ComponentSpec:
+        """从数据字典创建ComponentSpec对象"""
+        # 处理children字段
+        children = []
+        if 'children' in data:
+            children_data = data['children']
+            if isinstance(children_data, list):
+                for child_name in children_data:
+                    # 如果children是字符串数组，创建简单的子组件
+                    if isinstance(child_name, str):
+                        children.append(ComponentSpec(
+                            name=child_name,
+                            type="reference",  # 标记为引用类型
+                            properties={}
+                        ))
+                    elif isinstance(child_name, dict):
+                        children.append(self._create_component_spec_from_data(child_name))
+        
+        return ComponentSpec(
+            name=data.get('name', 'UnknownComponent'),
+            type=data.get('type', 'unknown'),
+            properties=data.get('properties', {}),
+            children=children,
+            events=data.get('events', []),
+            validation=data.get('validation'),
+            accessibility=data.get('accessibility')
+        )
+    
+    def _parse_component_spec_fallback(self, response: str) -> Optional[ComponentSpec]:
+        """从非结构化文本中解析组件规格（fallback方法）"""
+        try:
+            # 基本的文本解析逻辑
+            lines = response.split('\n')
+            component_name = None
+            component_type = None
+            properties = {}
+            events = []
+            found_valid_content = False
+            
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # 查找组件名称
+                if '"name"' in line or 'name:' in line:
+                    # 简单的名称提取
+                    if ':' in line:
+                        component_name = line.split(':')[-1].strip().strip('"\'')
+                        found_valid_content = True
+                
+                # 查找组件类型
+                if '"type"' in line or 'type:' in line:
+                    if ':' in line:
+                        component_type = line.split(':')[-1].strip().strip('"\'')
+                        found_valid_content = True
+                
+                # 查找事件
+                if 'event' in line.lower() and ('[' in line or 'click' in line or 'hover' in line):
+                    # 简单的事件提取
+                    if 'click' in line:
+                        events.append('click')
+                        found_valid_content = True
+                    if 'hover' in line:
+                        events.append('hover')
+                        found_valid_content = True
+                    if 'submit' in line:
+                        events.append('submit')
+                        found_valid_content = True
+            
+            # 只有找到有效内容才返回组件
+            if found_valid_content and component_name and component_type:
                 return ComponentSpec(
-                    name=data.get('name', ''),
-                    type=data.get('type', ''),
-                    properties=data.get('properties', {}),
-                    events=data.get('events', []),
-                    validation=data.get('validation'),
-                    accessibility=data.get('accessibility')
+                    name=component_name,
+                    type=component_type,
+                    properties=properties,
+                    events=events,
+                    validation=None,
+                    accessibility=None
                 )
-        except (json.JSONDecodeError, KeyError):
+        
+        except Exception:
             pass
         
         return None
@@ -636,18 +867,21 @@ class RequirementAnalyzer(BaseModule):
         
         Based on the original requirements: {original_text}
         
-        Extract detailed component specification as JSON:
+        Extract detailed component specification. Return as JSON - either a single component object or an array if multiple related components are involved:
+        
+        For single component:
         {{
             "name": "ComponentName",
-            "type": "button|input|form|card|modal|navigation|etc",
+            "type": "button|input|form|card|modal|navigation|list|etc",
             "properties": {{
                 "size": "small|medium|large",
                 "variant": "primary|secondary|outline",
                 "placeholder": "text",
                 "required": true,
+                "grid": {{"enabled": true, "columns": {{"xs": 1, "md": 2}}}},
                 "other_props": "value"
             }},
-            "events": ["click", "hover", "submit", "change"],
+            "events": ["click", "hover", "submit", "change", "scroll"],
             "validation": {{
                 "rules": ["required", "email", "minLength:3"],
                 "messages": {{"required": "This field is required"}}
@@ -656,8 +890,28 @@ class RequirementAnalyzer(BaseModule):
                 "aria-label": "Descriptive label",
                 "role": "button",
                 "keyboard_navigation": true
-            }}
+            }},
+            "children": ["ChildComponentName"]
         }}
+        
+        For multiple related components (like a list and its items):
+        [
+            {{
+                "name": "ParentComponent",
+                "type": "list|container|form",
+                "properties": {{ ... }},
+                "events": [ ... ],
+                "children": ["ChildComponent"]
+            }},
+            {{
+                "name": "ChildComponent", 
+                "type": "card|item|field",
+                "properties": {{ ... }},
+                "events": [ ... ]
+            }}
+        ]
+        
+        Ensure all component specifications are detailed and include realistic properties, events, validation rules and accessibility features.
         """
     
     def _get_layout_analysis_prompt(self) -> str:

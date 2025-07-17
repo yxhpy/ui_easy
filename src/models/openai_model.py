@@ -27,13 +27,37 @@ class OpenAIModel(BaseModel):
             response = self.client.chat.completions.create(
                 model=self.config.model_id,
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=kwargs.get('max_tokens', self.config.max_tokens),
+                # max_tokens=kwargs.get('max_tokens', self.config.max_tokens),
                 temperature=kwargs.get('temperature', self.config.temperature),
                 timeout=kwargs.get('timeout', self.config.timeout)
             )
             return response.choices[0].message.content
         except Exception as e:
             raise Exception(f"OpenAI API error: {str(e)}")
+    
+    def generate_text_stream(self, prompt: str, **kwargs):
+        """Generate text from prompt with streaming"""
+        try:
+            stream = self.client.chat.completions.create(
+                model=self.config.model_id,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=kwargs.get('temperature', self.config.temperature),
+                timeout=kwargs.get('timeout', self.config.timeout),
+                stream=True
+            )
+            
+            for chunk in stream:
+                if chunk.choices and len(chunk.choices) > 0:
+                    delta = chunk.choices[0].delta
+                    if hasattr(delta, 'content') and delta.content is not None:
+                        yield delta.content
+                        
+        except Exception as e:
+            raise Exception(f"OpenAI stream API error: {str(e)}")
+    
+    def generate_stream(self, prompt: str, **kwargs):
+        """Generate text with streaming (implementation for base class)"""
+        return self.generate_text_stream(prompt, **kwargs)
     
     def analyze_image(self, image_data: str, prompt: str, **kwargs) -> str:
         """Analyze image with prompt"""
@@ -59,7 +83,7 @@ class OpenAIModel(BaseModel):
             response = self.client.chat.completions.create(
                 model=self.config.model_id,
                 messages=messages,
-                max_tokens=kwargs.get('max_tokens', self.config.max_tokens),
+                # max_tokens=kwargs.get('max_tokens', self.config.max_tokens),
                 temperature=kwargs.get('temperature', self.config.temperature),
                 timeout=kwargs.get('timeout', self.config.timeout)
             )
@@ -92,7 +116,7 @@ class OpenAIModel(BaseModel):
             stream = self.client.chat.completions.create(
                 model=self.config.model_id,
                 messages=messages,
-                max_tokens=kwargs.get('max_tokens', self.config.max_tokens),
+                # max_tokens=kwargs.get('max_tokens', self.config.max_tokens),
                 temperature=kwargs.get('temperature', self.config.temperature),
                 timeout=kwargs.get('timeout', self.config.timeout),
                 stream=True
@@ -113,7 +137,7 @@ class OpenAIModel(BaseModel):
             response = self.client.chat.completions.create(
                 model=self.config.model_id,
                 messages=messages,
-                max_tokens=kwargs.get('max_tokens', self.config.max_tokens),
+                # max_tokens=kwargs.get('max_tokens', self.config.max_tokens),
                 temperature=kwargs.get('temperature', self.config.temperature),
                 timeout=kwargs.get('timeout', self.config.timeout)
             )
