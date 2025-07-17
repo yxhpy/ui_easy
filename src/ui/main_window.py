@@ -15,6 +15,7 @@ from PyQt5.QtGui import QPixmap, QFont, QIcon
 from core.config import Config
 from core.image_analyzer import ImageAnalyzer
 from core.requirement_analyzer.analyzer import RequirementAnalyzer
+from core.prototype_generator import PrototypeGenerator
 from ui.localization import tr, set_language
 
 class AnalysisWorker(QThread):
@@ -55,9 +56,11 @@ class MainWindow(QMainWindow):
         self.config = Config()
         self.image_analyzer = ImageAnalyzer(self.config)
         self.requirement_analyzer = RequirementAnalyzer(self.config)
+        self.prototype_generator = PrototypeGenerator(self.config)
         self.current_image_path = None
         self.analysis_worker = None
         self.current_requirements_result = None
+        self.current_prototype_result = None
         
         # Initialize settings UI components
         self.model_combo = None
@@ -398,10 +401,201 @@ class MainWindow(QMainWindow):
         tab = QWidget()
         self.tab_widget.addTab(tab, tr("tab_prototype_generator"))
         
-        layout = QVBoxLayout(tab)
-        placeholder = QLabel(tr("prototype_coming_soon"))
-        placeholder.setAlignment(Qt.AlignCenter)
-        layout.addWidget(placeholder)
+        layout = QHBoxLayout(tab)
+        
+        # Left panel - Input Management and Settings
+        left_panel = QWidget()
+        left_panel.setMaximumWidth(400)
+        left_layout = QVBoxLayout(left_panel)
+        
+        # Input Management Section
+        input_group = QGroupBox(tr("input_management"))
+        input_layout = QVBoxLayout(input_group)
+        
+        # Add input buttons
+        input_buttons_layout = QHBoxLayout()
+        self.add_text_input_btn = QPushButton("📝 " + tr("add_text_input"))
+        self.add_text_input_btn.clicked.connect(self.add_text_input)
+        
+        self.add_image_analysis_btn = QPushButton("🖼️ " + tr("add_image_analysis"))
+        self.add_image_analysis_btn.clicked.connect(self.add_image_analysis_input)
+        
+        self.add_req_analysis_btn = QPushButton("📋 " + tr("add_requirement_analysis"))
+        self.add_req_analysis_btn.clicked.connect(self.add_requirement_analysis_input)
+        
+        input_buttons_layout.addWidget(self.add_text_input_btn)
+        input_buttons_layout.addWidget(self.add_image_analysis_btn)
+        input_buttons_layout.addWidget(self.add_req_analysis_btn)
+        input_layout.addLayout(input_buttons_layout)
+        
+        # Input list display
+        self.input_list_widget = QTextEdit()
+        self.input_list_widget.setReadOnly(True)
+        self.input_list_widget.setMaximumHeight(150)
+        self.input_list_widget.setPlaceholderText(tr("no_inputs"))
+        input_layout.addWidget(QLabel(tr("prototype_inputs")))
+        input_layout.addWidget(self.input_list_widget)
+        
+        # Clear inputs button
+        self.clear_inputs_btn = QPushButton(tr("clear_all_inputs"))
+        self.clear_inputs_btn.clicked.connect(self.clear_prototype_inputs)
+        input_layout.addWidget(self.clear_inputs_btn)
+        
+        left_layout.addWidget(input_group)
+        
+        # Prototype Settings Section
+        settings_group = QGroupBox(tr("prototype_settings"))
+        settings_layout = QFormLayout(settings_group)
+        
+        # Prototype type
+        self.prototype_type_combo = QComboBox()
+        self.prototype_type_combo.addItems([tr("web"), tr("mobile"), tr("desktop")])
+        settings_layout.addRow(tr("prototype_type"), self.prototype_type_combo)
+        
+        # Framework
+        self.framework_combo = QComboBox()
+        self.framework_combo.addItems([tr("html_css_js"), tr("react"), tr("vue"), tr("angular")])
+        settings_layout.addRow(tr("framework"), self.framework_combo)
+        
+        # Style framework
+        self.style_framework_combo = QComboBox()
+        self.style_framework_combo.addItems([tr("bootstrap"), tr("tailwind"), tr("custom")])
+        settings_layout.addRow(tr("style_framework"), self.style_framework_combo)
+        
+        # Responsive design
+        self.responsive_check = QCheckBox()
+        self.responsive_check.setChecked(True)
+        settings_layout.addRow(tr("responsive_design"), self.responsive_check)
+        
+        # Accessibility support
+        self.accessibility_check = QCheckBox()
+        self.accessibility_check.setChecked(True)
+        settings_layout.addRow(tr("accessibility_support"), self.accessibility_check)
+        
+        left_layout.addWidget(settings_group)
+        
+        # Generate button
+        self.generate_prototype_btn = QPushButton("🚀 " + tr("generate_prototype"))
+        self.generate_prototype_btn.clicked.connect(self.generate_prototype)
+        self.generate_prototype_btn.setEnabled(False)
+        left_layout.addWidget(self.generate_prototype_btn)
+        
+        # Progress section
+        progress_group = QGroupBox(tr("prototype_generation"))
+        progress_layout = QVBoxLayout(progress_group)
+        
+        self.prototype_progress_bar = QProgressBar()
+        progress_layout.addWidget(self.prototype_progress_bar)
+        
+        self.prototype_status_label = QLabel(tr("ready"))
+        progress_layout.addWidget(self.prototype_status_label)
+        
+        left_layout.addWidget(progress_group)
+        left_layout.addStretch()
+        
+        # Right panel - Results
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+        
+        # Results tabs
+        self.prototype_results_tab_widget = QTabWidget()
+        
+        # Code Preview Tab
+        code_tab = QWidget()
+        code_layout = QVBoxLayout(code_tab)
+        
+        # Code type selector
+        code_type_layout = QHBoxLayout()
+        code_type_layout.addWidget(QLabel(tr("code_preview")))
+        self.code_type_combo = QComboBox()
+        self.code_type_combo.addItems([tr("html_code"), tr("css_code"), tr("js_code")])
+        self.code_type_combo.currentTextChanged.connect(self.switch_code_view)
+        code_type_layout.addWidget(self.code_type_combo)
+        code_type_layout.addStretch()
+        code_layout.addLayout(code_type_layout)
+        
+        self.code_display = QTextEdit()
+        self.code_display.setReadOnly(True)
+        self.code_display.setPlaceholderText(tr("no_prototype_result"))
+        code_layout.addWidget(self.code_display)
+        
+        self.prototype_results_tab_widget.addTab(code_tab, tr("code_preview"))
+        
+        # Component Structure Tab
+        structure_tab = QWidget()
+        structure_layout = QVBoxLayout(structure_tab)
+        
+        self.structure_display = QTextEdit()
+        self.structure_display.setReadOnly(True)
+        self.structure_display.setPlaceholderText(tr("no_prototype_result"))
+        structure_layout.addWidget(self.structure_display)
+        
+        self.prototype_results_tab_widget.addTab(structure_tab, tr("component_structure"))
+        
+        # Design Rationale Tab
+        rationale_tab = QWidget()
+        rationale_layout = QVBoxLayout(rationale_tab)
+        
+        self.rationale_display = QTextEdit()
+        self.rationale_display.setReadOnly(True)
+        self.rationale_display.setPlaceholderText(tr("no_prototype_result"))
+        rationale_layout.addWidget(self.rationale_display)
+        
+        self.prototype_results_tab_widget.addTab(rationale_tab, tr("design_rationale"))
+        
+        # Implementation Notes Tab
+        notes_tab = QWidget()
+        notes_layout = QVBoxLayout(notes_tab)
+        
+        self.notes_display = QTextEdit()
+        self.notes_display.setReadOnly(True)
+        self.notes_display.setPlaceholderText(tr("no_prototype_result"))
+        notes_layout.addWidget(self.notes_display)
+        
+        self.prototype_results_tab_widget.addTab(notes_tab, tr("implementation_notes"))
+        
+        # Preview Tab
+        preview_tab = QWidget()
+        preview_layout = QVBoxLayout(preview_tab)
+        
+        # Preview will be implemented later with QWebEngineView
+        self.preview_placeholder = QLabel(tr("preview") + " - " + tr("prototype_coming_soon"))
+        self.preview_placeholder.setAlignment(Qt.AlignCenter)
+        preview_layout.addWidget(self.preview_placeholder)
+        
+        self.prototype_results_tab_widget.addTab(preview_tab, tr("preview"))
+        
+        right_layout.addWidget(self.prototype_results_tab_widget)
+        
+        # Export buttons
+        export_layout = QHBoxLayout()
+        self.export_prototype_html_btn = QPushButton(tr("export_html"))
+        self.export_prototype_html_btn.clicked.connect(self.export_prototype_html)
+        self.export_prototype_html_btn.setEnabled(False)
+        
+        self.export_prototype_json_btn = QPushButton(tr("export_json"))
+        self.export_prototype_json_btn.clicked.connect(self.export_prototype_json)
+        self.export_prototype_json_btn.setEnabled(False)
+        
+        self.export_prototype_separate_btn = QPushButton(tr("export_separate"))
+        self.export_prototype_separate_btn.clicked.connect(self.export_prototype_separate)
+        self.export_prototype_separate_btn.setEnabled(False)
+        
+        export_layout.addWidget(self.export_prototype_html_btn)
+        export_layout.addWidget(self.export_prototype_json_btn)
+        export_layout.addWidget(self.export_prototype_separate_btn)
+        export_layout.addStretch()
+        
+        right_layout.addLayout(export_layout)
+        
+        # Add panels to splitter
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.addWidget(left_panel)
+        splitter.addWidget(right_panel)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        
+        layout.addWidget(splitter)
     
     def setup_settings_tab(self):
         """Setup settings tab"""
@@ -1237,7 +1431,7 @@ class MainWindow(QMainWindow):
         module_select_layout = QHBoxLayout()
         module_select_layout.addWidget(QLabel(tr("select_module")))
         self.module_combo = QComboBox()
-        self.module_combo.addItems(["image_analyzer", "requirement_analyzer"])
+        self.module_combo.addItems(["image_analyzer", "requirement_analyzer", "prototype_generator"])
         self.module_combo.currentTextChanged.connect(self.load_module_config)
         module_select_layout.addWidget(self.module_combo)
         module_select_layout.addStretch()
@@ -1610,7 +1804,7 @@ class MainWindow(QMainWindow):
             
             # Check modules
             result_text += f"{tr('module_status')}:\n"
-            for module_name in ["image_analyzer", "requirement_analyzer"]:
+            for module_name in ["image_analyzer", "requirement_analyzer", "prototype_generator"]:
                 module_config = self.config.get_module_config(module_name)
                 if module_config and module_config.enabled:
                     model_config = self.config.get_model_config(module_config.model_config)
@@ -1702,3 +1896,365 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             print(f"Failed to update UI language: {e}")
+    
+    # Prototype Generator Methods
+    def add_text_input(self):
+        """Add a text input to prototype generator"""
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLineEdit, QTextEdit, QPushButton, QDialogButtonBox
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle(tr("add_text_input"))
+        dialog.setModal(True)
+        dialog.resize(400, 300)
+        
+        layout = QVBoxLayout(dialog)
+        
+        # Input name
+        layout.addWidget(QLabel(tr("input_name")))
+        name_edit = QLineEdit()
+        name_edit.setPlaceholderText("例如: 用户界面需求")
+        layout.addWidget(name_edit)
+        
+        # Input content
+        layout.addWidget(QLabel(tr("input_content")))
+        content_edit = QTextEdit()
+        content_edit.setPlaceholderText("输入详细的文本内容...")
+        layout.addWidget(content_edit)
+        
+        # Buttons
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        
+        if dialog.exec_() == QDialog.Accepted:
+            name = name_edit.text().strip() or tr("text_input")
+            content = content_edit.toPlainText().strip()
+            
+            if content:
+                self.prototype_generator.add_input("text", content, name)
+                self.update_input_list_display()
+                self.update_generate_button_state()
+    
+    def add_image_analysis_input(self):
+        """Add current image analysis result as input"""
+        if not self.current_analysis_result:
+            QMessageBox.warning(self, tr("warning"), "请先完成图像分析")
+            return
+        
+        # Convert result to string format
+        if isinstance(self.current_analysis_result, dict):
+            import json
+            content = json.dumps(self.current_analysis_result, ensure_ascii=False, indent=2)
+        else:
+            content = str(self.current_analysis_result)
+        
+        name = tr("image_analysis_result")
+        self.prototype_generator.add_input("image_analysis", content, name)
+        self.update_input_list_display()
+        self.update_generate_button_state()
+    
+    def add_requirement_analysis_input(self):
+        """Add current requirement analysis result as input"""
+        if not self.current_requirements_result:
+            QMessageBox.warning(self, tr("warning"), "请先完成需求分析")
+            return
+        
+        # Convert result to string format
+        if hasattr(self.current_requirements_result, 'to_dict'):
+            import json
+            content = json.dumps(self.current_requirements_result.to_dict(), ensure_ascii=False, indent=2)
+        elif isinstance(self.current_requirements_result, dict):
+            import json
+            content = json.dumps(self.current_requirements_result, ensure_ascii=False, indent=2)
+        else:
+            content = str(self.current_requirements_result)
+        
+        name = tr("requirement_analysis_result")
+        self.prototype_generator.add_input("requirement_analysis", content, name)
+        self.update_input_list_display()
+        self.update_generate_button_state()
+    
+    def clear_prototype_inputs(self):
+        """Clear all prototype inputs"""
+        self.prototype_generator.clear_inputs()
+        self.update_input_list_display()
+        self.update_generate_button_state()
+    
+    def update_input_list_display(self):
+        """Update the input list display"""
+        inputs_summary = self.prototype_generator.get_inputs_summary()
+        
+        if not inputs_summary:
+            self.input_list_widget.setPlainText(tr("no_inputs"))
+            return
+        
+        display_text = f"=== {tr('prototype_inputs')} ({len(inputs_summary)} {tr('items')}) ===\n\n"
+        
+        for inp in inputs_summary:
+            display_text += f"🔹 {inp['name']} ({inp['type']})\n"
+            display_text += f"   {tr('input_preview')}: {inp['content_preview']}\n\n"
+        
+        self.input_list_widget.setPlainText(display_text)
+    
+    def update_generate_button_state(self):
+        """Update the generate button enabled state"""
+        has_inputs = len(self.prototype_generator.inputs) > 0
+        self.generate_prototype_btn.setEnabled(has_inputs)
+    
+    def generate_prototype(self):
+        """Generate prototype from current inputs"""
+        if not self.prototype_generator.inputs:
+            QMessageBox.warning(self, tr("warning"), "请先添加输入源")
+            return
+        
+        # Check if API key is configured
+        config = self.config.get_module_config("prototype_generator")
+        if not config:
+            # Use the same model config as requirement analyzer
+            config = self.config.get_module_config("requirement_analyzer")
+        
+        if config:
+            model_config = self.config.get_model_config(config.model_config)
+            if not model_config or not model_config.api_key:
+                QMessageBox.warning(
+                    self, 
+                    tr("config_error"), 
+                    tr("api_key_required")
+                )
+                return
+        
+        # Disable generate button
+        self.generate_prototype_btn.setEnabled(False)
+        self.prototype_progress_bar.setValue(0)
+        
+        # Clear previous results
+        self.clear_prototype_results_display()
+        
+        # Show generation header
+        header_text = f"=== {tr('prototype_generation')} ===\n{tr('generating_prototype')}\n\n"
+        self.rationale_display.setPlainText(header_text)
+        
+        # Prepare input data
+        input_data = {
+            "prototype_type": self.prototype_type_combo.currentText(),
+            "framework": self.framework_combo.currentText(),
+            "style_framework": self.style_framework_combo.currentText(),
+            "responsive": self.responsive_check.isChecked(),
+            "accessibility": self.accessibility_check.isChecked()
+        }
+        
+        # Start generation in worker thread
+        self.analysis_worker = AnalysisWorker(self.prototype_generator, input_data)
+        self.analysis_worker.finished.connect(self.on_prototype_generation_finished)
+        self.analysis_worker.error.connect(self.on_prototype_generation_error)
+        self.analysis_worker.progress.connect(self.on_prototype_progress_update)
+        self.analysis_worker.status.connect(self.on_prototype_status_update)
+        self.analysis_worker.streaming_text.connect(self.on_prototype_streaming_text_update)
+        self.analysis_worker.start()
+    
+    def on_prototype_generation_finished(self, result):
+        """Handle prototype generation completion"""
+        from core.prototype_generator.analyzer import PrototypeResult
+        
+        # Convert dict back to PrototypeResult if needed
+        if isinstance(result, dict):
+            prototype_result = PrototypeResult()
+            prototype_result.html_code = result.get('html_code', '')
+            prototype_result.css_code = result.get('css_code', '')
+            prototype_result.js_code = result.get('js_code', '')
+            prototype_result.component_structure = result.get('component_structure', [])
+            prototype_result.design_rationale = result.get('design_rationale', '')
+            prototype_result.implementation_notes = result.get('implementation_notes', [])
+            prototype_result.preview_available = result.get('preview_available', False)
+            prototype_result.metadata = result.get('metadata', {})
+            self.current_prototype_result = prototype_result
+        else:
+            self.current_prototype_result = result
+        
+        self.display_prototype_result(self.current_prototype_result)
+        self.generate_prototype_btn.setEnabled(True)
+        self.export_prototype_html_btn.setEnabled(True)
+        self.export_prototype_json_btn.setEnabled(True)
+        self.export_prototype_separate_btn.setEnabled(True)
+        self.prototype_status_label.setText(tr("prototype_generated"))
+    
+    def on_prototype_generation_error(self, error_msg):
+        """Handle prototype generation error"""
+        QMessageBox.critical(self, tr("error"), f"{tr('prototype_generation_failed')}: {error_msg}")
+        self.generate_prototype_btn.setEnabled(True)
+        self.prototype_status_label.setText(tr("prototype_generation_failed"))
+    
+    def on_prototype_progress_update(self, value):
+        """Update prototype progress bar"""
+        self.prototype_progress_bar.setValue(value)
+    
+    def on_prototype_status_update(self, status):
+        """Update prototype status label"""
+        self.prototype_status_label.setText(status)
+    
+    def on_prototype_streaming_text_update(self, text_chunk):
+        """Handle streaming text updates for prototype generation"""
+        # Append text chunk to rationale display area
+        cursor = self.rationale_display.textCursor()
+        cursor.movePosition(cursor.End)
+        cursor.insertText(text_chunk)
+        self.rationale_display.setTextCursor(cursor)
+        # Auto-scroll to bottom
+        self.rationale_display.ensureCursorVisible()
+    
+    def display_prototype_result(self, result):
+        """Display prototype generation results"""
+        try:
+            # Add completion metadata to rationale
+            rationale_text = f"\n\n{'='*60}\n"
+            rationale_text += f"=== {tr('prototype_generated')} ===\n\n"
+            rationale_text += f"{tr('design_rationale')}:\n{result.design_rationale or tr('na')}\n\n"
+            
+            # Append to existing streaming content
+            cursor = self.rationale_display.textCursor()
+            cursor.movePosition(cursor.End)
+            cursor.insertText(rationale_text)
+            self.rationale_display.setTextCursor(cursor)
+            self.rationale_display.ensureCursorVisible()
+            
+            # Update code displays
+            self.switch_code_view()
+            
+            # Display component structure
+            self.display_component_structure(result)
+            
+            # Display implementation notes
+            self.display_implementation_notes(result)
+            
+        except Exception as e:
+            QMessageBox.critical(self, tr('display_error'), f"{tr('failed_display_results')}: {str(e)}")
+    
+    def clear_prototype_results_display(self):
+        """Clear all prototype result displays"""
+        self.code_display.clear()
+        self.structure_display.clear()
+        self.rationale_display.clear()
+        self.notes_display.clear()
+    
+    def switch_code_view(self):
+        """Switch code display based on selected type"""
+        if not self.current_prototype_result:
+            return
+        
+        code_type = self.code_type_combo.currentText()
+        
+        if code_type == tr("html_code"):
+            self.code_display.setPlainText(self.current_prototype_result.html_code)
+        elif code_type == tr("css_code"):
+            self.code_display.setPlainText(self.current_prototype_result.css_code)
+        elif code_type == tr("js_code"):
+            self.code_display.setPlainText(self.current_prototype_result.js_code)
+    
+    def display_component_structure(self, result):
+        """Display component structure"""
+        structure_text = f"=== {tr('component_structure')} ===\n\n"
+        
+        if not result.component_structure:
+            structure_text += f"{tr('no_prototype_result')}\n"
+        else:
+            for i, component in enumerate(result.component_structure, 1):
+                if isinstance(component, dict):
+                    name = component.get('name', tr('na'))
+                    comp_type = component.get('type', tr('na'))
+                    description = component.get('description', tr('na'))
+                    props = component.get('props', [])
+                    events = component.get('events', [])
+                    
+                    structure_text += f"{i}. {name} ({comp_type})\n"
+                    structure_text += f"   {tr('description')}: {description}\n"
+                    
+                    if props:
+                        structure_text += f"   {tr('properties')}: {', '.join(props)}\n"
+                    
+                    if events:
+                        structure_text += f"   {tr('events')}: {', '.join(events)}\n"
+                    
+                    structure_text += "\n"
+                else:
+                    structure_text += f"{i}. {str(component)}\n"
+        
+        self.structure_display.setPlainText(structure_text)
+    
+    def display_implementation_notes(self, result):
+        """Display implementation notes"""
+        notes_text = f"=== {tr('implementation_notes')} ===\n\n"
+        
+        if not result.implementation_notes:
+            notes_text += f"{tr('no_prototype_result')}\n"
+        else:
+            for i, note in enumerate(result.implementation_notes, 1):
+                notes_text += f"{i}. {note}\n"
+        
+        self.notes_display.setPlainText(notes_text)
+    
+    def export_prototype_html(self):
+        """Export prototype as HTML file"""
+        if not self.current_prototype_result:
+            return
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, 
+            tr("select_export_location"), 
+            "prototype.html", 
+            tr("html_files")
+        )
+        
+        if file_path:
+            try:
+                success = self.prototype_generator.export_prototype(file_path, 'html')
+                if success:
+                    QMessageBox.information(self, tr("success"), tr("prototype_export_success"))
+                else:
+                    QMessageBox.critical(self, tr("error"), tr("prototype_export_failed"))
+            except Exception as e:
+                QMessageBox.critical(self, tr("error"), f"{tr('prototype_export_failed')}: {str(e)}")
+    
+    def export_prototype_json(self):
+        """Export prototype as JSON file"""
+        if not self.current_prototype_result:
+            return
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, 
+            tr("select_export_location"), 
+            "prototype.json", 
+            tr("json_files")
+        )
+        
+        if file_path:
+            try:
+                success = self.prototype_generator.export_prototype(file_path, 'json')
+                if success:
+                    QMessageBox.information(self, tr("success"), tr("prototype_export_success"))
+                else:
+                    QMessageBox.critical(self, tr("error"), tr("prototype_export_failed"))
+            except Exception as e:
+                QMessageBox.critical(self, tr("error"), f"{tr('prototype_export_failed')}: {str(e)}")
+    
+    def export_prototype_separate(self):
+        """Export prototype as separate HTML, CSS, JS files"""
+        if not self.current_prototype_result:
+            return
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, 
+            tr("select_export_location"), 
+            "prototype.html", 
+            tr("html_files")
+        )
+        
+        if file_path:
+            try:
+                success = self.prototype_generator.export_prototype(file_path, 'separate')
+                if success:
+                    QMessageBox.information(self, tr("success"), tr("prototype_export_success"))
+                else:
+                    QMessageBox.critical(self, tr("error"), tr("prototype_export_failed"))
+            except Exception as e:
+                QMessageBox.critical(self, tr("error"), f"{tr('prototype_export_failed')}: {str(e)}")

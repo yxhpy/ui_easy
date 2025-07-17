@@ -166,9 +166,16 @@ class Config:
             custom_prompts={}
         )
         
+        prototype_generator_config = ModuleConfig(
+            enabled=True,
+            model_config="deepseek",
+            custom_prompts={}
+        )
+        
         self.modules = {
             "image_analyzer": image_analyzer_config,
-            "requirement_analyzer": requirement_analyzer_config
+            "requirement_analyzer": requirement_analyzer_config,
+            "prototype_generator": prototype_generator_config
         }
         
         # Create default app settings
