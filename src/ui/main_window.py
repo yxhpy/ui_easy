@@ -264,7 +264,18 @@ class MainWindow(QMainWindow):
         options_layout.addWidget(QLabel(tr("target_platform")))
         options_layout.addWidget(self.platform_combo)
         
-        # Analyze button
+        # Two-phase analysis buttons
+        self.extract_list_btn = QPushButton("📋 " + tr("extract_requirement_list"))
+        self.extract_list_btn.clicked.connect(self.extract_requirement_list)
+        self.extract_list_btn.setEnabled(True)
+        options_layout.addWidget(self.extract_list_btn)
+        
+        self.detailed_analysis_btn = QPushButton("🔍 " + tr("detailed_analysis"))
+        self.detailed_analysis_btn.clicked.connect(self.detailed_analysis)
+        self.detailed_analysis_btn.setEnabled(False)
+        options_layout.addWidget(self.detailed_analysis_btn)
+        
+        # Original analyze button (for backward compatibility)
         self.analyze_requirements_btn = QPushButton(tr("analyze_requirements"))
         self.analyze_requirements_btn.clicked.connect(self.analyze_requirements)
         self.analyze_requirements_btn.setEnabled(True)
@@ -649,7 +660,7 @@ class MainWindow(QMainWindow):
         self.quality_text.clear()
         
         # Show analysis header
-        header_text = "=== Requirements Analysis ===\n正在分析需求，请稍候...\n\n"
+        header_text = f"=== {tr('requirements_analysis')} ===\n{tr('analyzing_requirements_please_wait')}\n\n"
         self.overview_text.setPlainText(header_text)
         
         # Prepare input data
@@ -668,6 +679,128 @@ class MainWindow(QMainWindow):
         self.analysis_worker.streaming_text.connect(self.on_requirements_streaming_text_update)
         self.analysis_worker.start()
     
+    def extract_requirement_list(self):
+        """Extract requirement list (Phase 1)"""
+        requirements_text = self.requirements_text.toPlainText().strip()
+        if not requirements_text:
+            QMessageBox.warning(self, tr("warning"), tr("enter_requirements"))
+            return
+        
+        # Check if API key is configured
+        config = self.config.get_module_config("requirement_analyzer")
+        if config:
+            model_config = self.config.get_model_config(config.model_config)
+            if not model_config or not model_config.api_key:
+                QMessageBox.warning(
+                    self, 
+                    tr("config_error"), 
+                    tr("api_key_required")
+                )
+                return
+        
+        # Disable buttons
+        self.extract_list_btn.setEnabled(False)
+        self.detailed_analysis_btn.setEnabled(False)
+        self.analyze_requirements_btn.setEnabled(False)
+        self.req_progress_bar.setValue(0)
+        
+        # Clear previous results
+        self.overview_text.clear()
+        self.requirements_list.clear()
+        self.components_text.clear()
+        self.quality_text.clear()
+        
+        # Show analysis header
+        header_text = f"=== {tr('extracting_requirements_list')} ===\n{tr('analyzing_requirements_please_wait')}\n\n"
+        self.overview_text.setPlainText(header_text)
+        
+        # Prepare input data for Phase 1
+        input_data = {
+            "text": requirements_text,
+            "context": self.context_text.toPlainText().strip(),
+            "platform": self.platform_combo.currentText(),
+            "phase": "list"
+        }
+        
+        # Start analysis in worker thread
+        self.analysis_worker = AnalysisWorker(self.requirement_analyzer, input_data)
+        self.analysis_worker.finished.connect(self.on_requirement_list_finished)
+        self.analysis_worker.error.connect(self.on_requirements_analysis_error)
+        self.analysis_worker.progress.connect(self.on_requirements_progress_update)
+        self.analysis_worker.status.connect(self.on_requirements_status_update)
+        self.analysis_worker.streaming_text.connect(self.on_requirements_streaming_text_update)
+        self.analysis_worker.start()
+    
+    def detailed_analysis(self):
+        """Detailed analysis (Phase 2)"""
+        if not self.current_requirements_result:
+            QMessageBox.warning(self, tr("warning"), tr("extract_requirement_list_first"))
+            return
+        
+        # Disable buttons
+        self.extract_list_btn.setEnabled(False)
+        self.detailed_analysis_btn.setEnabled(False)
+        self.analyze_requirements_btn.setEnabled(False)
+        self.req_progress_bar.setValue(0)
+        
+        # Show analysis header
+        header_text = f"=== {tr('detailed_analysis')} ===\n{tr('analyzing_requirements_please_wait')}\n\n"
+        self.overview_text.setPlainText(header_text)
+        
+        # Prepare input data for Phase 2
+        # Handle both Requirement objects and dict objects
+        requirement_list = []
+        for req in self.current_requirements_result.requirements:
+            if hasattr(req, 'to_dict'):
+                # It's a Requirement object
+                requirement_list.append(req.to_dict())
+            elif isinstance(req, dict):
+                # It's already a dictionary
+                requirement_list.append(req)
+            else:
+                # Unknown type, log error and skip
+                print(f"Warning: Unknown requirement type: {type(req)}")
+                continue
+        
+        input_data = {
+            "text": self.requirements_text.toPlainText().strip(),
+            "context": self.context_text.toPlainText().strip(),
+            "platform": self.platform_combo.currentText(),
+            "phase": "detail",
+            "requirement_list": requirement_list
+        }
+        
+        # Start analysis in worker thread
+        self.analysis_worker = AnalysisWorker(self.requirement_analyzer, input_data)
+        self.analysis_worker.finished.connect(self.on_requirements_analysis_finished)
+        self.analysis_worker.error.connect(self.on_requirements_analysis_error)
+        self.analysis_worker.progress.connect(self.on_requirements_progress_update)
+        self.analysis_worker.status.connect(self.on_requirements_status_update)
+        self.analysis_worker.streaming_text.connect(self.on_requirements_streaming_text_update)
+        self.analysis_worker.start()
+    
+    def on_requirement_list_finished(self, result):
+        """Handle completion of requirement list extraction"""
+        from core.requirement_analyzer.models import AnalysisResult
+        
+        # Convert dict back to AnalysisResult if needed
+        if isinstance(result, dict):
+            self.current_requirements_result = AnalysisResult(**result)
+        else:
+            self.current_requirements_result = result
+        
+        # Enable buttons
+        self.extract_list_btn.setEnabled(True)
+        self.detailed_analysis_btn.setEnabled(True)
+        self.analyze_requirements_btn.setEnabled(True)
+        
+        # Display results
+        self.display_requirements_result(self.current_requirements_result)
+        
+        # Show completion message
+        self.req_status_label.setText(tr("requirements_list_extraction_completed"))
+        self.req_progress_bar.setValue(100)
+    
     def on_requirements_analysis_finished(self, result):
         """Handle requirements analysis completion"""
         self.current_requirements_result = result
@@ -675,13 +808,15 @@ class MainWindow(QMainWindow):
         self.analyze_requirements_btn.setEnabled(True)
         self.export_req_json_btn.setEnabled(True)
         self.export_req_txt_btn.setEnabled(True)
-        self.req_status_label.setText("Analysis completed")
+        self.req_status_label.setText(tr('analysis_completed'))
     
     def on_requirements_analysis_error(self, error_msg):
         """Handle requirements analysis error"""
-        QMessageBox.critical(self, "Analysis Error", f"Requirements analysis failed: {error_msg}")
+        QMessageBox.critical(self, tr('analysis_error'), f"{tr('requirements_analysis')} {tr('analysis_failed')}: {error_msg}")
         self.analyze_requirements_btn.setEnabled(True)
-        self.req_status_label.setText("Analysis failed")
+        self.extract_list_btn.setEnabled(True)
+        self.detailed_analysis_btn.setEnabled(True)
+        self.req_status_label.setText(tr('analysis_failed'))
     
     def on_requirements_progress_update(self, value):
         """Update requirements progress bar"""
@@ -706,21 +841,21 @@ class MainWindow(QMainWindow):
         try:
             # Overview tab - 在流式内容后追加摘要
             overview_text = f"\n\n{'='*60}\n"
-            overview_text += f"=== 分析结果摘要 ===\n\n"
-            overview_text += f"项目概述:\n{result.get('project_overview', 'N/A')}\n\n"
-            overview_text += f"目标用户:\n{result.get('target_audience', 'N/A')}\n\n"
-            overview_text += f"平台: {result.get('platform', 'N/A')}\n\n"
+            overview_text += f"=== {tr('analysis_summary')} ===\n\n"
+            overview_text += f"{tr('project_overview')}:\n{result.project_overview or tr('na')}\n\n"
+            overview_text += f"{tr('target_audience')}:\n{result.target_audience or tr('na')}\n\n"
+            overview_text += f"{tr('target_platform')}: {result.platform or tr('na')}\n\n"
             
-            overview_text += f"质量评分:\n"
-            overview_text += f"• 完整性: {result.get('completeness_score', 0):.2f}\n"
-            overview_text += f"• 清晰度: {result.get('clarity_score', 0):.2f}\n"
-            overview_text += f"• 可行性: {result.get('feasibility_score', 0):.2f}\n\n"
+            overview_text += f"{tr('quality_scores')}:\n"
+            overview_text += f"• {tr('completeness')}: {result.completeness_score:.2f}\n"
+            overview_text += f"• {tr('clarity')}: {result.clarity_score:.2f}\n"
+            overview_text += f"• {tr('feasibility')}: {result.feasibility_score:.2f}\n\n"
             
-            overview_text += f"开发预估: {result.get('total_estimated_effort', 'N/A')}\n\n"
+            overview_text += f"{tr('development_estimation')}: {result.total_estimated_effort or tr('na')}\n\n"
             
-            framework_recommendations = result.get('framework_recommendations', [])
+            framework_recommendations = result.framework_recommendations
             if framework_recommendations:
-                overview_text += f"推荐框架:\n"
+                overview_text += f"{tr('recommended_frameworks')}:\n"
                 for framework in framework_recommendations:
                     overview_text += f"• {framework}\n"
             
@@ -741,7 +876,7 @@ class MainWindow(QMainWindow):
             self.display_quality_analysis(result)
             
         except Exception as e:
-            QMessageBox.critical(self, "Display Error", f"Failed to display results: {str(e)}")
+            QMessageBox.critical(self, tr('display_error'), f"{tr('failed_display_results')}: {str(e)}")
     
     def filter_requirements(self):
         """Filter and display requirements based on selected filters"""
@@ -753,27 +888,27 @@ class MainWindow(QMainWindow):
         
         filtered_reqs = []
         
-        requirements = self.current_requirements_result.get('requirements', [])
+        requirements = self.current_requirements_result.requirements
         for req in requirements:
             # Type filter
-            if type_filter != "All":
+            if type_filter != tr('all'):
                 type_map = {
-                    "Functional": "functional",
-                    "UI Component": "ui_component", 
-                    "Layout": "layout",
-                    "Styling": "styling",
-                    "Interaction": "interaction",
-                    "Data": "data",
-                    "Performance": "performance",
-                    "Accessibility": "accessibility",
-                    "Business": "business"
+                    tr('functional'): "functional",
+                    tr('ui_component'): "ui_component", 
+                    tr('layout'): "layout",
+                    tr('styling'): "styling",
+                    tr('interaction'): "interaction",
+                    tr('data'): "data",
+                    tr('performance'): "performance",
+                    tr('accessibility'): "accessibility",
+                    tr('business'): "business"
                 }
                 req_type = req.get('type') if isinstance(req, dict) else req.type.value
                 if req_type != type_map.get(type_filter, ""):
                     continue
             
             # Priority filter
-            if priority_filter != "All":
+            if priority_filter != tr('all'):
                 req_priority = req.get('priority') if isinstance(req, dict) else req.priority.value
                 if req_priority != priority_filter.lower():
                     continue
@@ -781,15 +916,15 @@ class MainWindow(QMainWindow):
             filtered_reqs.append(req)
         
         # Display filtered requirements
-        req_text = f"=== Requirements List ({len(filtered_reqs)} items) ===\n\n"
+        req_text = f"=== {tr('requirements_list')} ({len(filtered_reqs)} {tr('items')}) ===\n\n"
         
         for i, req in enumerate(filtered_reqs, 1):
             if isinstance(req, dict):
-                title = req.get('title', 'N/A')
+                title = req.get('title', tr('na'))
                 req_type = req.get('type', 'unknown').replace('_', ' ').title()
                 priority = req.get('priority', 'unknown').title()
                 status = req.get('status', 'unknown').title()
-                description = req.get('description', 'N/A')
+                description = req.get('description', tr('na'))
                 acceptance_criteria = req.get('acceptance_criteria', [])
                 estimated_effort = req.get('estimated_effort')
                 rationale = req.get('rationale')
@@ -804,21 +939,21 @@ class MainWindow(QMainWindow):
                 rationale = req.rationale
             
             req_text += f"{i}. {title}\n"
-            req_text += f"   Type: {req_type}\n"
-            req_text += f"   Priority: {priority}\n"
-            req_text += f"   Status: {status}\n"
-            req_text += f"   Description: {description}\n"
+            req_text += f"   {tr('type')}: {req_type}\n"
+            req_text += f"   {tr('priority')}: {priority}\n"
+            req_text += f"   {tr('status')}: {status}\n"
+            req_text += f"   {tr('description')}: {description}\n"
             
             if acceptance_criteria:
-                req_text += f"   Acceptance Criteria:\n"
+                req_text += f"   {tr('acceptance_criteria')}:\n"
                 for criteria in acceptance_criteria:
                     req_text += f"     • {criteria}\n"
             
             if estimated_effort:
-                req_text += f"   Estimated Effort: {estimated_effort}\n"
+                req_text += f"   {tr('estimated_effort')}: {estimated_effort}\n"
             
             if rationale:
-                req_text += f"   Rationale: {rationale}\n"
+                req_text += f"   {tr('rationale')}: {rationale}\n"
             
             req_text += "\n"
         
@@ -826,10 +961,10 @@ class MainWindow(QMainWindow):
     
     def display_components(self, result):
         """Display component specifications"""
-        comp_text = "=== Component Specifications ===\n\n"
+        comp_text = f"=== {tr('component_specifications')} ===\n\n"
         
         # Get UI component requirements
-        requirements = result.get('requirements', [])
+        requirements = result.requirements
         ui_reqs = []
         for req in requirements:
             if isinstance(req, dict):
@@ -840,43 +975,43 @@ class MainWindow(QMainWindow):
                     ui_reqs.append(req)
         
         if not ui_reqs:
-            comp_text += "No UI components identified in the requirements.\n"
+            comp_text += f"{tr('no_ui_components')}\n"
         else:
             for req in ui_reqs:
                 if isinstance(req, dict):
-                    title = req.get('title', 'N/A')
-                    description = req.get('description', 'N/A')
+                    title = req.get('title', tr('na'))
+                    description = req.get('description', tr('na'))
                     component_spec = req.get('component_spec')
                 else:
                     title = req.title
                     description = req.description
                     component_spec = req.component_spec
                 
-                comp_text += f"Component: {title}\n"
-                comp_text += f"Description: {description}\n"
+                comp_text += f"{tr('component')}: {title}\n"
+                comp_text += f"{tr('description')}: {description}\n"
                 
                 if component_spec:
                     if isinstance(component_spec, dict):
-                        comp_text += f"• Type: {component_spec.get('type', 'N/A')}\n"
-                        comp_text += f"• Name: {component_spec.get('name', 'N/A')}\n"
+                        comp_text += f"• {tr('type')}: {component_spec.get('type', tr('na'))}\n"
+                        comp_text += f"• {tr('name')}: {component_spec.get('name', tr('na'))}\n"
                         
                         properties = component_spec.get('properties', {})
                         if properties:
-                            comp_text += f"• Properties:\n"
+                            comp_text += f"• {tr('properties')}:\n"
                             for key, value in properties.items():
                                 comp_text += f"  - {key}: {value}\n"
                         
                         events = component_spec.get('events', [])
                         if events:
-                            comp_text += f"• Events: {', '.join(events)}\n"
+                            comp_text += f"• {tr('events')}: {', '.join(events)}\n"
                         
                         validation = component_spec.get('validation')
                         if validation:
-                            comp_text += f"• Validation: {validation}\n"
+                            comp_text += f"• {tr('validation')}: {validation}\n"
                         
                         accessibility = component_spec.get('accessibility')
                         if accessibility:
-                            comp_text += f"• Accessibility: {accessibility}\n"
+                            comp_text += f"• {tr('accessibility')}: {accessibility}\n"
                     else:
                         comp_text += f"• {tr('type')}: {component_spec.type}\n"
                         comp_text += f"• {tr('name')}: {component_spec.name}\n"
@@ -901,44 +1036,44 @@ class MainWindow(QMainWindow):
     
     def display_quality_analysis(self, result):
         """Display quality analysis and recommendations"""
-        quality_text = "=== Quality Analysis ===\n\n"
+        quality_text = f"=== {tr('quality_analysis')} ===\n\n"
         
-        quality_text += f"Analysis Scores:\n"
-        quality_text += f"• Completeness Score: {result.get('completeness_score', 0):.2f} / 1.0\n"
-        quality_text += f"• Clarity Score: {result.get('clarity_score', 0):.2f} / 1.0\n"
-        quality_text += f"• Feasibility Score: {result.get('feasibility_score', 0):.2f} / 1.0\n\n"
+        quality_text += f"{tr('analysis_scores')}:\n"
+        quality_text += f"• {tr('completeness_score')}: {result.completeness_score:.2f} / 1.0\n"
+        quality_text += f"• {tr('clarity_score')}: {result.clarity_score:.2f} / 1.0\n"
+        quality_text += f"• {tr('feasibility_score')}: {result.feasibility_score:.2f} / 1.0\n\n"
         
-        gaps = result.get('gaps', [])
+        gaps = result.gaps
         if gaps:
-            quality_text += f"Identified Gaps:\n"
+            quality_text += f"{tr('identified_gaps')}:\n"
             for gap in gaps:
                 quality_text += f"• {gap}\n"
             quality_text += "\n"
         
-        ambiguities = result.get('ambiguities', [])
+        ambiguities = result.ambiguities
         if ambiguities:
-            quality_text += f"Ambiguities to Clarify:\n"
+            quality_text += f"{tr('ambiguities_clarify')}:\n"
             for ambiguity in ambiguities:
                 quality_text += f"• {ambiguity}\n"
             quality_text += "\n"
         
-        recommendations = result.get('recommendations', [])
+        recommendations = result.recommendations
         if recommendations:
-            quality_text += f"Recommendations:\n"
+            quality_text += f"{tr('recommendations')}:\n"
             for rec in recommendations:
                 quality_text += f"• {rec}\n"
             quality_text += "\n"
         
-        development_phases = result.get('development_phases', [])
+        development_phases = result.development_phases
         if development_phases:
-            quality_text += f"Development Phases:\n"
+            quality_text += f"{tr('development_phases')}:\n"
             for phase in development_phases:
                 if isinstance(phase, dict):
-                    name = phase.get('name', 'N/A')
-                    description = phase.get('description', 'N/A')
-                    duration = phase.get('estimated_duration', 'N/A')
+                    name = phase.get('name', tr('na'))
+                    description = phase.get('description', tr('na'))
+                    duration = phase.get('estimated_duration', tr('na'))
                     quality_text += f"• {name}: {description}\n"
-                    quality_text += f"  Duration: {duration}\n"
+                    quality_text += f"  {tr('duration')}: {duration}\n"
                 else:
                     quality_text += f"• {phase}\n"
             quality_text += "\n"
@@ -1379,7 +1514,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, tr("success"), tr("settings_loaded"))
             
         except Exception as e:
-            QMessageBox.critical(self, tr("error"), f"加载设置失败：{str(e)}")
+            QMessageBox.critical(self, tr("error"), f"{tr('failed_load_settings')}：{str(e)}")
     
     def auto_save_app_settings(self):
         """Auto-save app settings when they change"""
@@ -1424,7 +1559,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, tr("success"), tr("settings_saved"))
             
         except Exception as e:
-            QMessageBox.critical(self, tr("error"), f"保存设置失败：{str(e)}")
+            QMessageBox.critical(self, tr("error"), f"{tr('failed_save_settings')}：{str(e)}")
     
     def test_configuration(self):
         """Test the current configuration"""
@@ -1435,52 +1570,52 @@ class MainWindow(QMainWindow):
             
             for model_name, model_config in self.config.models.items():
                 if not model_config.api_key:
-                    failed_models.append(f"{model_name}: 缺少 API 密钥")
+                    failed_models.append(f"{model_name}: {tr('missing_api_key')}")
                     continue
                 
                 # Basic validation
                 if model_config.provider == "openai" and not model_config.model_id:
-                    failed_models.append(f"{model_name}: OpenAI 模型需要指定 model_id")
+                    failed_models.append(f"{model_name}: {tr('openai_needs_model_id')}")
                     continue
                     
                 if model_config.provider == "deepseek" and not model_config.base_url:
-                    failed_models.append(f"{model_name}: DeepSeek 模型需要指定 base_url")
+                    failed_models.append(f"{model_name}: {tr('deepseek_needs_base_url')}")
                     continue
                 
                 tested_models.append(model_name)
             
             # Show results
-            result_text = "配置测试结果：\n\n"
+            result_text = f"{tr('configuration_test_results')}:\n\n"
             
             if tested_models:
-                result_text += f"成功配置的模型 ({len(tested_models)})：\n"
+                result_text += f"{tr('successful_models')} ({len(tested_models)}):\n"
                 for model in tested_models:
                     result_text += f"✓ {model}\n"
                 result_text += "\n"
             
             if failed_models:
-                result_text += f"配置问题 ({len(failed_models)})：\n"
+                result_text += f"{tr('configuration_issues')} ({len(failed_models)}):\n"
                 for error in failed_models:
                     result_text += f"✗ {error}\n"
                 result_text += "\n"
             
             # Check modules
-            result_text += "模块状态：\n"
+            result_text += f"{tr('module_status')}:\n"
             for module_name in ["image_analyzer", "requirement_analyzer"]:
                 module_config = self.config.get_module_config(module_name)
                 if module_config and module_config.enabled:
                     model_config = self.config.get_model_config(module_config.model_config)
                     if model_config and model_config.api_key:
-                        result_text += f"✓ {module_name}: 已启用，使用模型 {module_config.model_config}\n"
+                        result_text += f"✓ {module_name}: {tr('enabled_using_model')} {module_config.model_config}\n"
                     else:
-                        result_text += f"✗ {module_name}: 已启用但模型配置无效\n"
+                        result_text += f"✗ {module_name}: {tr('enabled_invalid_model')}\n"
                 else:
-                    result_text += f"- {module_name}: 已禁用\n"
+                    result_text += f"- {module_name}: {tr('disabled')}\n"
             
-            QMessageBox.information(self, "配置测试结果", result_text)
+            QMessageBox.information(self, tr('configuration_test_results'), result_text)
              
         except Exception as e:
-            QMessageBox.critical(self, "错误", f"测试配置时出错：{str(e)}")
+            QMessageBox.critical(self, tr('error'), f"{tr('config_test_error')}：{str(e)}")
     
     def load_initial_settings(self):
         """Load initial settings when the app starts"""

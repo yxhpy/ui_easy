@@ -52,7 +52,7 @@ class ImageAnalyzer(BaseModule):
         
         # Get model for analysis
         module_config = self.config_manager.get_module_config("image_analyzer")
-        model_config_name = module_config.model_config if module_config else "powerful_model"
+        model_config_name = module_config.model_config if module_config else self.config_manager.get_app_setting("default_model")
         model = self.model_factory.get_model(model_config_name)
         
         # Perform analysis with streaming

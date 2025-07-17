@@ -246,6 +246,59 @@ class Localization:
                 "confidence_meta": "置信度",
                 "unknown": "未知",
                 "na": "不适用",
+                
+                # Requirements analysis progress messages
+                "analyzing_project_overview": "🔍 正在分析项目概述...",
+                "extracting_requirements": "📋 正在提取和分类需求...",
+                "analyzing_ui_components": "🎨 正在分析 {count} 个UI组件...",
+                "no_ui_components_found": "⚠️ 未找到UI组件需求，跳过组件分析。",
+                "analyzing_component": "分析组件 {current}/{total}: {title}",
+                "component_analysis_complete": "✅ 组件 {title} 分析完成",
+                "component_analysis_failed": "⚠️ 组件 {title} 分析失败",
+                "starting_requirements_analysis": "开始需求分析...",
+                "analyzing_requirements_overview": "正在分析需求概述...",
+                "extracting_categorizing_requirements": "正在提取和分类需求...",
+                "analyzing_ui_components_phase": "正在分析UI组件...",
+                "analyzing_layout_interactions": "正在分析布局和交互...",
+                "validating_requirements": "正在验证需求...",
+                "requirements_analysis_completed": "需求分析完成",
+                
+                # Gap analysis messages
+                "gap_no_ui_components": "未识别出具体的UI组件",
+                "gap_no_layout": "未定义布局结构",
+                "gap_no_styling": "缺少视觉样式要求",
+                "gap_no_interactions": "未指定用户交互模式",
+                "gap_missing_description": "需求 '{title}' 缺少描述",
+                "gap_missing_acceptance_criteria": "需求 '{title}' 缺少验收标准",
+                
+                # Recommendation messages
+                "recommendation_address_gaps": "解决缺失的需求以确保完整的规格说明",
+                "recommendation_clarify_ambiguities": "澄清模糊的需求以避免实现混乱",
+                "recommendation_reduce_critical": "考虑减少关键需求 - 太多关键项目可能影响交付",
+                "recommendation_identify_critical": "识别关键需求以优先开发工作",
+                
+                # Ambiguity messages
+                "ambiguity_vague_language": "需求 '{title}' 中含有模糊语言: 包含 '{word}'",
+                "ambiguity_contradictory": "需求 '{title}' 中存在矛盾的复杂性要求",
+                
+                # Two-phase analysis messages
+                "starting_requirements_list_extraction": "开始提取需求列表...",
+                "extracting_requirements_list": "📋 正在提取需求列表...",
+                "requirements_list_extraction_completed": "需求列表提取完成",
+                "starting_detailed_analysis": "开始详细分析...",
+                "analyzing_requirement_detail": "正在分析需求 {current}/{total}: {title}",
+                "detailed_analysis_completed": "详细分析完成",
+                "recommendation_proceed_detailed_analysis": "建议继续进行详细分析以获取完整的需求规格",
+                "analyzing_component_detail": "正在详细分析组件: {title}",
+                "analyzing_layout_detail": "正在详细分析布局: {title}",
+                "analyzing_interaction_detail": "正在详细分析交互: {title}",
+                "layout_analysis_complete": "✅ 布局 {title} 分析完成",
+                "layout_analysis_failed": "⚠️ 布局 {title} 分析失败",
+                "interaction_analysis_complete": "✅ 交互 {title} 分析完成",
+                "interaction_analysis_failed": "⚠️ 交互 {title} 分析失败",
+                "extract_requirement_list": "提取需求列表",
+                "detailed_analysis": "详细分析",
+                "extract_requirement_list_first": "请先提取需求列表",
             },
             "en_US": {
                 # Window title
@@ -474,6 +527,59 @@ class Localization:
                 "confidence_meta": "Confidence",
                 "unknown": "Unknown",
                 "na": "N/A",
+                
+                # Requirements analysis progress messages
+                "analyzing_project_overview": "🔍 Analyzing project overview...",
+                "extracting_requirements": "📋 Extracting and categorizing requirements...",
+                "analyzing_ui_components": "🎨 Analyzing {count} UI components...",
+                "no_ui_components_found": "⚠️ No UI component requirements found, skipping component analysis.",
+                "analyzing_component": "Analyzing component {current}/{total}: {title}",
+                "component_analysis_complete": "✅ Component {title} analysis complete",
+                "component_analysis_failed": "⚠️ Component {title} analysis failed",
+                "starting_requirements_analysis": "Starting requirements analysis...",
+                "analyzing_requirements_overview": "Analyzing requirements overview...",
+                "extracting_categorizing_requirements": "Extracting and categorizing requirements...",
+                "analyzing_ui_components_phase": "Analyzing UI components...",
+                "analyzing_layout_interactions": "Analyzing layout and interactions...",
+                "validating_requirements": "Validating requirements...",
+                "requirements_analysis_completed": "Requirements analysis completed",
+                
+                # Gap analysis messages
+                "gap_no_ui_components": "No specific UI components identified",
+                "gap_no_layout": "Layout structure not defined",
+                "gap_no_styling": "Visual styling requirements missing",
+                "gap_no_interactions": "User interaction patterns not specified",
+                "gap_missing_description": "Requirement '{title}' lacks description",
+                "gap_missing_acceptance_criteria": "Acceptance criteria missing for '{title}'",
+                
+                # Recommendation messages
+                "recommendation_address_gaps": "Address missing requirements to ensure complete specification",
+                "recommendation_clarify_ambiguities": "Clarify ambiguous requirements to avoid implementation confusion",
+                "recommendation_reduce_critical": "Consider reducing critical requirements - too many critical items may impact delivery",
+                "recommendation_identify_critical": "Identify critical requirements to prioritize development effort",
+                
+                # Ambiguity messages
+                "ambiguity_vague_language": "Vague language in '{title}': contains '{word}'",
+                "ambiguity_contradictory": "Contradictory complexity requirements in '{title}'",
+                
+                # Two-phase analysis messages
+                "starting_requirements_list_extraction": "Starting requirements list extraction...",
+                "extracting_requirements_list": "📋 Extracting requirements list...",
+                "requirements_list_extraction_completed": "Requirements list extraction completed",
+                "starting_detailed_analysis": "Starting detailed analysis...",
+                "analyzing_requirement_detail": "Analyzing requirement {current}/{total}: {title}",
+                "detailed_analysis_completed": "Detailed analysis completed",
+                "recommendation_proceed_detailed_analysis": "Recommend proceeding with detailed analysis for complete requirement specification",
+                "analyzing_component_detail": "Analyzing component in detail: {title}",
+                "analyzing_layout_detail": "Analyzing layout in detail: {title}",
+                "analyzing_interaction_detail": "Analyzing interaction in detail: {title}",
+                "layout_analysis_complete": "✅ Layout {title} analysis complete",
+                "layout_analysis_failed": "⚠️ Layout {title} analysis failed",
+                "interaction_analysis_complete": "✅ Interaction {title} analysis complete",
+                "interaction_analysis_failed": "⚠️ Interaction {title} analysis failed",
+                "extract_requirement_list": "Extract Requirement List",
+                "detailed_analysis": "Detailed Analysis",
+                "extract_requirement_list_first": "Please extract requirement list first",
             }
         }
         

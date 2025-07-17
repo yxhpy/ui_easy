@@ -9,6 +9,7 @@ from datetime import datetime
 
 from core.base_module import BaseModule
 from models.model_factory import ModelFactory
+from ui.localization import tr
 from .models import (
     Requirement, RequirementType, RequirementPriority, RequirementStatus,
     ComponentSpec, LayoutSpec, StyleSpec, InteractionSpec, AnalysisResult
@@ -22,6 +23,7 @@ class RequirementAnalyzer(BaseModule):
     def __init__(self, config):
         super().__init__("RequirementAnalyzer", config)
         self.model_factory = ModelFactory(config)
+        self.config = config
         
         # Analysis prompts for different aspects
         self.prompts = {
@@ -43,6 +45,8 @@ class RequirementAnalyzer(BaseModule):
                 'context': str,  # Additional context (optional)
                 'platform': str,  # Target platform (web, mobile, desktop)
                 'existing_analysis': AnalysisResult  # Previous analysis to refine (optional)
+                'phase': str,  # 'list' for requirement list extraction, 'detail' for detailed analysis
+                'requirement_list': List[Dict]  # For detailed analysis phase
             }
         
         Returns:
@@ -52,44 +56,138 @@ class RequirementAnalyzer(BaseModule):
         context = input_data.get('context', '')
         platform = input_data.get('platform', 'web')
         existing_analysis = input_data.get('existing_analysis')
+        phase = input_data.get('phase', 'complete')  # 'list', 'detail', or 'complete'
+        requirement_list = input_data.get('requirement_list', [])
         
-        if not requirements_text.strip():
+        if not requirements_text.strip() and phase != 'detail':
             raise ValueError("Requirements text cannot be empty")
         
-        self.update_progress(10, "Starting requirements analysis...")
+        # Phase 1: Extract requirement list only
+        if phase == 'list':
+            return self._extract_requirement_list_only(requirements_text, context, platform)
+        
+        # Phase 2: Detailed analysis of specific requirements
+        elif phase == 'detail':
+            return self._analyze_requirements_in_detail(requirement_list, requirements_text, context, platform)
+        
+        # Complete analysis (original behavior)
+        else:
+            return self._complete_analysis(requirements_text, context, platform, existing_analysis)
+        
+    def _extract_requirement_list_only(self, requirements_text: str, context: str, platform: str) -> AnalysisResult:
+        """Phase 1: Extract only the requirement list to ensure completeness"""
+        self.update_progress(10, tr("starting_requirements_list_extraction"))
+        
+        # Step 1: Project overview
+        self.update_progress(30, tr("analyzing_requirements_overview"))
+        project_overview, target_audience = self._analyze_project_overview(requirements_text, context)
+        
+        # Step 2: Extract requirement list with minimal details
+        self.update_progress(70, tr("extracting_requirements_list"))
+        requirements = self._extract_requirements_list(requirements_text, context, platform)
+        
+        self.update_progress(100, tr("requirements_list_extraction_completed"))
+        
+        # Return minimal result with just the list
+        return AnalysisResult(
+            requirements=requirements,
+            project_overview=project_overview,
+            target_audience=target_audience,
+            platform=platform,
+            framework_recommendations=[],
+            completeness_score=0.3,  # Partial completion
+            clarity_score=0.5,
+            feasibility_score=0.8,
+            gaps=[],
+            ambiguities=[],
+            recommendations=[tr("recommendation_proceed_detailed_analysis")],
+            total_estimated_effort="TBD",
+            development_phases=[]
+        )
+    
+    def _analyze_requirements_in_detail(self, requirement_list: List[Dict], original_text: str, 
+                                       context: str, platform: str) -> AnalysisResult:
+        """Phase 2: Detailed analysis of each requirement"""
+        self.update_progress(10, tr("starting_detailed_analysis"))
+        
+        # Convert requirement list to Requirement objects
+        requirements = []
+        for req_data in requirement_list:
+            req = self._create_requirement_from_dict(req_data, original_text)
+            if req:
+                requirements.append(req)
+        
+        # Analyze each requirement in detail
+        total_reqs = len(requirements)
+        
+        for i, requirement in enumerate(requirements):
+            progress = 20 + (60 * (i + 1) // total_reqs)
+            self.update_progress(progress, tr("analyzing_requirement_detail").format(
+                current=i+1, total=total_reqs, title=requirement.title[:30]
+            ))
+            
+            # Detailed component analysis for UI components
+            if requirement.type == RequirementType.UI_COMPONENT:
+                self._analyze_single_component(requirement, original_text)
+            
+            # Layout analysis for layout requirements
+            elif requirement.type == RequirementType.LAYOUT:
+                self._analyze_single_layout(requirement, original_text)
+            
+            # Interaction analysis
+            elif requirement.type == RequirementType.INTERACTION:
+                self._analyze_single_interaction(requirement, original_text)
+        
+        # Final validation and scoring
+        self.update_progress(90, tr("validating_requirements"))
+        analysis_result = self._validate_and_score(
+            requirements, "", "", platform, original_text
+        )
+        
+        self.update_progress(100, tr("detailed_analysis_completed"))
+        return analysis_result
+    
+    def _complete_analysis(self, requirements_text: str, context: str, platform: str, 
+                          existing_analysis: Optional[AnalysisResult]) -> AnalysisResult:
+        """Original complete analysis flow"""
+        self.update_progress(10, tr("starting_requirements_analysis"))
         
         # Step 1: Initial analysis and project overview
-        self.update_progress(20, "Analyzing project overview...")
+        self.update_progress(20, tr("analyzing_requirements_overview"))
         project_overview, target_audience = self._analyze_project_overview(requirements_text, context)
         
         # Step 2: Extract and categorize requirements
-        self.update_progress(40, "Extracting requirements...")
+        self.update_progress(40, tr("extracting_categorizing_requirements"))
         requirements = self._extract_requirements(requirements_text, context, platform)
         
         # Step 3: Analyze components
-        self.update_progress(60, "Analyzing UI components...")
+        self.update_progress(60, tr("analyzing_ui_components_phase"))
         self._analyze_components(requirements, requirements_text)
         
         # Step 4: Analyze layout and interactions
-        self.update_progress(80, "Analyzing layout and interactions...")
+        self.update_progress(80, tr("analyzing_layout_interactions"))
         self._analyze_layout_and_interactions(requirements, requirements_text)
         
         # Step 5: Validate and score
-        self.update_progress(90, "Validating requirements...")
+        self.update_progress(90, tr("validating_requirements"))
         analysis_result = self._validate_and_score(
             requirements, project_overview, target_audience, platform, requirements_text
         )
         
-        self.update_progress(100, "Requirements analysis completed")
+        self.update_progress(100, tr("requirements_analysis_completed"))
         return analysis_result
     
     def _analyze_project_overview(self, requirements_text: str, context: str) -> Tuple[str, str]:
         """Extract project overview and target audience"""
         try:
-            # 直接使用default模型配置
-            model = self.model_factory.create_model('default')
+            # 使用模块配置指定的模型
+            module_config = self.config.get_module_config("requirement_analyzer")
+            model_config_name = module_config.model_config if module_config else self.config.get_app_setting("default_model")
+            model = self.model_factory.get_model(model_config_name)
             
             prompt = f"""
+            {self._get_language_instruction()}
+            
             Analyze the following requirements and provide:
             1. A concise project overview (2-3 sentences)
             2. Target audience description
@@ -111,7 +209,7 @@ class RequirementAnalyzer(BaseModule):
             response = ""
             try:
                 # 发送分析开始的提示
-                self.streaming_text_updated.emit("🔍 正在分析项目概述...\n\n")
+                self.streaming_text_updated.emit(tr("analyzing_project_overview") + "\n\n")
                 
                 if hasattr(model, 'generate_stream'):
                     for chunk in model.generate_stream(prompt):
@@ -154,9 +252,13 @@ class RequirementAnalyzer(BaseModule):
     def _extract_requirements(self, requirements_text: str, context: str, platform: str) -> List[Requirement]:
         """Extract individual requirements from text"""
         try:
-            model = self.model_factory.create_model('default')
+            # 使用模块配置指定的模型
+            module_config = self.config.get_module_config("requirement_analyzer")
+            model_config_name = module_config.model_config if module_config else self.config.get_app_setting("default_model")
+            model = self.model_factory.get_model(model_config_name)
             
             prompt = self.prompts['initial_analysis'].format(
+                language_instruction=self._get_language_instruction(),
                 requirements_text=requirements_text,
                 context=context,
                 platform=platform
@@ -165,7 +267,7 @@ class RequirementAnalyzer(BaseModule):
             # 流式输出需求提取过程
             response = ""
             try:
-                self.streaming_text_updated.emit("📋 正在提取和分类需求...\n\n")
+                self.streaming_text_updated.emit(tr("extracting_requirements") + "\n\n")
                 
                 if hasattr(model, 'generate_stream'):
                     for chunk in model.generate_stream(prompt):
@@ -187,23 +289,194 @@ class RequirementAnalyzer(BaseModule):
             self.error_occurred.emit(f"Error extracting requirements: {str(e)}")
             return []
     
+    def _extract_requirements_list(self, requirements_text: str, context: str, platform: str) -> List[Requirement]:
+        """Extract basic requirement list with minimal details for first phase"""
+        try:
+            # 使用模块配置指定的模型
+            module_config = self.config.get_module_config("requirement_analyzer")
+            model_config_name = module_config.model_config if module_config else self.config.get_app_setting("default_model")
+            model = self.model_factory.get_model(model_config_name)
+            
+            prompt = self._get_requirement_list_prompt().format(
+                language_instruction=self._get_language_instruction(),
+                requirements_text=requirements_text,
+                context=context,
+                platform=platform
+            )
+            
+            # 流式输出需求列表提取过程
+            response = ""
+            try:
+                self.streaming_text_updated.emit(tr("extracting_requirements_list") + "\n\n")
+                
+                if hasattr(model, 'generate_stream'):
+                    for chunk in model.generate_stream(prompt):
+                        response += chunk
+                        self.streaming_text_updated.emit(chunk)
+                else:
+                    response = model.generate(prompt)
+                    self.streaming_text_updated.emit(response)
+            except Exception:
+                response = model.generate(prompt)
+                self.streaming_text_updated.emit(response)
+            
+            self.streaming_text_updated.emit("\n\n" + "="*50 + "\n\n")
+            
+            # Parse the response and create basic Requirement objects
+            return self._parse_requirements_response(response, requirements_text)
+            
+        except Exception as e:
+            self.error_occurred.emit(f"Error extracting requirements list: {str(e)}")
+            return []
+    
+    def _analyze_single_component(self, requirement: Requirement, original_text: str):
+        """Analyze a single UI component requirement in detail"""
+        try:
+            module_config = self.config.get_module_config("requirement_analyzer")
+            model_config_name = module_config.model_config if module_config else self.config.get_app_setting("default_model")
+            model = self.model_factory.get_model(model_config_name)
+            
+            self.streaming_text_updated.emit(tr("analyzing_component_detail").format(title=requirement.title) + "\n")
+            
+            prompt = self.prompts['component_extraction'].format(
+                language_instruction=self._get_language_instruction(),
+                requirement_title=requirement.title,
+                requirement_description=requirement.description,
+                original_text=original_text
+            )
+            
+            response = ""
+            try:
+                if hasattr(model, 'generate_stream'):
+                    for chunk in model.generate_stream(prompt):
+                        response += chunk
+                        self.streaming_text_updated.emit(chunk)
+                else:
+                    response = model.generate(prompt)
+                    self.streaming_text_updated.emit(response)
+            except Exception:
+                response = model.generate(prompt)
+                self.streaming_text_updated.emit(response)
+            
+            component_spec = self._parse_component_spec(response)
+            
+            if component_spec:
+                requirement.component_spec = component_spec
+                requirement.status = RequirementStatus.ANALYZED
+                self.streaming_text_updated.emit("\n" + tr("component_analysis_complete").format(title=requirement.title) + "\n\n")
+            else:
+                self.streaming_text_updated.emit("\n" + tr("component_analysis_failed").format(title=requirement.title) + "\n\n")
+                
+        except Exception as e:
+            self.error_occurred.emit(f"Error analyzing component {requirement.title}: {str(e)}")
+    
+    def _analyze_single_layout(self, requirement: Requirement, original_text: str):
+        """Analyze a single layout requirement in detail"""
+        try:
+            module_config = self.config.get_module_config("requirement_analyzer")
+            model_config_name = module_config.model_config if module_config else self.config.get_app_setting("default_model")
+            model = self.model_factory.get_model(model_config_name)
+            
+            self.streaming_text_updated.emit(tr("analyzing_layout_detail").format(title=requirement.title) + "\n")
+            
+            prompt = self.prompts['layout_analysis'].format(
+                language_instruction=self._get_language_instruction(),
+                requirement_description=requirement.description,
+                original_text=original_text
+            )
+            
+            response = ""
+            try:
+                if hasattr(model, 'generate_stream'):
+                    for chunk in model.generate_stream(prompt):
+                        response += chunk
+                        self.streaming_text_updated.emit(chunk)
+                else:
+                    response = model.generate(prompt)
+                    self.streaming_text_updated.emit(response)
+            except Exception:
+                response = model.generate(prompt)
+                self.streaming_text_updated.emit(response)
+            
+            layout_spec = self._parse_layout_spec(response)
+            
+            if layout_spec:
+                requirement.layout_spec = layout_spec
+                requirement.status = RequirementStatus.ANALYZED
+                self.streaming_text_updated.emit("\n" + tr("layout_analysis_complete").format(title=requirement.title) + "\n\n")
+            else:
+                requirement.status = RequirementStatus.INCOMPLETE
+                self.streaming_text_updated.emit("\n" + tr("layout_analysis_failed").format(title=requirement.title) + "\n\n")
+                # 记录调试信息
+                self.streaming_text_updated.emit(f"调试信息：AI响应内容：{response[:300]}...\n\n")
+                
+        except Exception as e:
+            self.error_occurred.emit(f"Error analyzing layout {requirement.title}: {str(e)}")
+    
+    def _analyze_single_interaction(self, requirement: Requirement, original_text: str):
+        """Analyze a single interaction requirement in detail"""
+        try:
+            module_config = self.config.get_module_config("requirement_analyzer")
+            model_config_name = module_config.model_config if module_config else self.config.get_app_setting("default_model")
+            model = self.model_factory.get_model(model_config_name)
+            
+            self.streaming_text_updated.emit(tr("analyzing_interaction_detail").format(title=requirement.title) + "\n")
+            
+            prompt = self.prompts['interaction_analysis'].format(
+                language_instruction=self._get_language_instruction(),
+                requirement_description=requirement.description,
+                original_text=original_text
+            )
+            
+            response = ""
+            try:
+                if hasattr(model, 'generate_stream'):
+                    for chunk in model.generate_stream(prompt):
+                        response += chunk
+                        self.streaming_text_updated.emit(chunk)
+                else:
+                    response = model.generate(prompt)
+                    self.streaming_text_updated.emit(response)
+            except Exception:
+                response = model.generate(prompt)
+                self.streaming_text_updated.emit(response)
+            
+            interaction_specs = self._parse_interaction_specs(response)
+            
+            if interaction_specs:
+                requirement.interaction_specs = interaction_specs
+                requirement.status = RequirementStatus.ANALYZED
+                self.streaming_text_updated.emit("\n" + tr("interaction_analysis_complete").format(title=requirement.title) + "\n\n")
+            else:
+                requirement.status = RequirementStatus.INCOMPLETE
+                self.streaming_text_updated.emit("\n" + tr("interaction_analysis_failed").format(title=requirement.title) + "\n\n")
+                # 记录调试信息
+                self.streaming_text_updated.emit(f"调试信息：AI响应内容：{response[:300]}...\n\n")
+                
+        except Exception as e:
+            self.error_occurred.emit(f"Error analyzing interaction {requirement.title}: {str(e)}")
+    
     def _analyze_components(self, requirements: List[Requirement], original_text: str):
         """Analyze and add component specifications to requirements"""
         ui_requirements = [req for req in requirements if req.type == RequirementType.UI_COMPONENT]
         
         if not ui_requirements:
-            self.streaming_text_updated.emit("⚠️ 未找到UI组件需求，跳过组件分析。\n\n")
+            self.streaming_text_updated.emit(tr("no_ui_components_found") + "\n\n")
             return
         
         try:
-            model = self.model_factory.create_model('default')
+            # 使用模块配置指定的模型
+            module_config = self.config.get_module_config("requirement_analyzer")
+            model_config_name = module_config.model_config if module_config else self.config.get_app_setting("default_model")
+            model = self.model_factory.get_model(model_config_name)
             
-            self.streaming_text_updated.emit(f"🎨 正在分析 {len(ui_requirements)} 个UI组件...\n\n")
+            self.streaming_text_updated.emit(tr("analyzing_ui_components").format(count=len(ui_requirements)) + "\n\n")
             
             for i, requirement in enumerate(ui_requirements, 1):
-                self.streaming_text_updated.emit(f"分析组件 {i}/{len(ui_requirements)}: {requirement.title}\n")
+                self.streaming_text_updated.emit(tr("analyzing_component").format(current=i, total=len(ui_requirements), title=requirement.title) + "\n")
                 
                 prompt = self.prompts['component_extraction'].format(
+                    language_instruction=self._get_language_instruction(),
                     requirement_title=requirement.title,
                     requirement_description=requirement.description,
                     original_text=original_text
@@ -227,9 +500,12 @@ class RequirementAnalyzer(BaseModule):
                 if component_spec:
                     requirement.component_spec = component_spec
                     requirement.status = RequirementStatus.ANALYZED
-                    self.streaming_text_updated.emit(f"\n✅ 组件 {requirement.title} 分析完成\n\n")
+                    self.streaming_text_updated.emit("\n" + tr("component_analysis_complete").format(title=requirement.title) + "\n\n")
                 else:
-                    self.streaming_text_updated.emit(f"\n⚠️ 组件 {requirement.title} 分析失败\n\n")
+                    requirement.status = RequirementStatus.INCOMPLETE
+                    self.streaming_text_updated.emit("\n" + tr("component_analysis_failed").format(title=requirement.title) + "\n\n")
+                    # 记录调试信息
+                    self.streaming_text_updated.emit(f"调试信息：AI响应内容：{response[:300]}...\n\n")
             
             self.streaming_text_updated.emit("="*50 + "\n\n")
                     
@@ -242,11 +518,15 @@ class RequirementAnalyzer(BaseModule):
         interaction_requirements = [req for req in requirements if req.type == RequirementType.INTERACTION]
         
         try:
-            model = self.model_factory.create_model('default')
+            # 使用模块配置指定的模型
+            module_config = self.config.get_module_config("requirement_analyzer")
+            model_config_name = module_config.model_config if module_config else self.config.get_app_setting("default_model")
+            model = self.model_factory.get_model(model_config_name)
             
             # Analyze layout requirements
             for requirement in layout_requirements:
                 prompt = self.prompts['layout_analysis'].format(
+                    language_instruction=self._get_language_instruction(),
                     requirement_description=requirement.description,
                     original_text=original_text
                 )
@@ -261,6 +541,7 @@ class RequirementAnalyzer(BaseModule):
             # Analyze interaction requirements
             for requirement in interaction_requirements:
                 prompt = self.prompts['interaction_analysis'].format(
+                    language_instruction=self._get_language_instruction(),
                     requirement_description=requirement.description,
                     original_text=original_text
                 )
@@ -580,8 +861,11 @@ class RequirementAnalyzer(BaseModule):
     def _parse_layout_spec(self, response: str) -> Optional[LayoutSpec]:
         """Parse layout specification from AI response"""
         try:
-            if response.strip().startswith('{'):
-                data = json.loads(response)
+            # 清理响应文本
+            cleaned_response = self._clean_json_response(response)
+            
+            if cleaned_response.startswith('{'):
+                data = json.loads(cleaned_response)
                 return LayoutSpec(
                     type=data.get('type', 'flow'),
                     sections=data.get('sections', []),
@@ -590,38 +874,166 @@ class RequirementAnalyzer(BaseModule):
                     spacing=data.get('spacing'),
                     alignment=data.get('alignment')
                 )
-        except (json.JSONDecodeError, KeyError):
-            pass
+            else:
+                # 尝试从文本中提取JSON
+                json_match = re.search(r'\{.*\}', cleaned_response, re.DOTALL)
+                if json_match:
+                    data = json.loads(json_match.group())
+                    return LayoutSpec(
+                        type=data.get('type', 'flow'),
+                        sections=data.get('sections', []),
+                        responsive=data.get('responsive', True),
+                        breakpoints=data.get('breakpoints'),
+                        spacing=data.get('spacing'),
+                        alignment=data.get('alignment')
+                    )
+        except (json.JSONDecodeError, KeyError, AttributeError) as e:
+            # 记录错误但不抛出异常
+            print(f"Layout parsing error: {e}, response: {response[:200]}...")
         
         return None
-    
+
     def _parse_interaction_specs(self, response: str) -> List[InteractionSpec]:
         """Parse interaction specifications from AI response"""
         specs = []
         
         try:
-            if response.strip().startswith('['):
-                data = json.loads(response)
-            elif response.strip().startswith('{') and 'interactions' in response:
-                data = json.loads(response)['interactions']
-            else:
-                return specs
+            # 清理响应文本
+            cleaned_response = self._clean_json_response(response)
             
-            for item in data:
-                spec = InteractionSpec(
-                    trigger=item.get('trigger', ''),
-                    action=item.get('action', ''),
-                    target=item.get('target', ''),
-                    conditions=item.get('conditions', []),
-                    feedback=item.get('feedback'),
-                    validation=item.get('validation')
-                )
-                specs.append(spec)
+            data = None
+            
+            if cleaned_response.startswith('['):
+                data = json.loads(cleaned_response)
+            elif cleaned_response.startswith('{'):
+                parsed_obj = json.loads(cleaned_response)
+                if 'interactions' in parsed_obj:
+                    data = parsed_obj['interactions']
+                elif isinstance(parsed_obj, dict) and any(key in parsed_obj for key in ['trigger', 'action', 'target']):
+                    # 单个交互对象
+                    data = [parsed_obj]
+            else:
+                # 尝试从文本中提取JSON数组
+                json_match = re.search(r'\[.*\]', cleaned_response, re.DOTALL)
+                if json_match:
+                    data = json.loads(json_match.group())
+                else:
+                    # 尝试提取JSON对象
+                    json_match = re.search(r'\{.*\}', cleaned_response, re.DOTALL)
+                    if json_match:
+                        parsed_obj = json.loads(json_match.group())
+                        if isinstance(parsed_obj, dict) and any(key in parsed_obj for key in ['trigger', 'action', 'target']):
+                            data = [parsed_obj]
+            
+            if data and isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict):
+                        spec = InteractionSpec(
+                            trigger=item.get('trigger', ''),
+                            action=item.get('action', ''),
+                            target=item.get('target', ''),
+                            conditions=item.get('conditions', []),
+                            feedback=item.get('feedback'),
+                            validation=item.get('validation')
+                        )
+                        specs.append(spec)
                 
-        except (json.JSONDecodeError, KeyError):
-            pass
+        except (json.JSONDecodeError, KeyError, AttributeError) as e:
+            # 记录错误但不抛出异常
+            print(f"Interaction parsing error: {e}, response: {response[:200]}...")
         
         return specs
+
+    def _clean_json_response(self, response: str) -> str:
+        """清理AI响应文本，移除markdown代码块标记和其他干扰内容"""
+        if not response:
+            return ""
+        
+        # 移除开头和结尾的空白
+        cleaned = response.strip()
+        
+        # 移除markdown代码块标记
+        if cleaned.startswith('```json'):
+            cleaned = cleaned[7:]
+        elif cleaned.startswith('```'):
+            cleaned = cleaned[3:]
+        
+        if cleaned.endswith('```'):
+            cleaned = cleaned[:-3]
+        
+        # 移除其他可能的前缀/后缀
+        prefixes_to_remove = [
+            '分析结果：', '分析结果:', 'Result:', 'result:', 
+            '布局分析：', '布局分析:', 'Layout:', 'layout:',
+            '交互分析：', '交互分析:', 'Interaction:', 'interaction:',
+            'JSON:', 'json:', 'JSON格式：', 'JSON格式:'
+        ]
+        
+        for prefix in prefixes_to_remove:
+            if cleaned.startswith(prefix):
+                cleaned = cleaned[len(prefix):].strip()
+                break
+        
+        # 清理结尾的说明文字
+        suffixes_to_remove = [
+            '以上是分析结果', '分析完成', 'Analysis complete', 'analysis complete'
+        ]
+        
+        for suffix in suffixes_to_remove:
+            if cleaned.endswith(suffix):
+                cleaned = cleaned[:-len(suffix)].strip()
+                break
+        
+        # 修复中文引号问题 - 智能处理嵌套引号
+        cleaned = self._fix_chinese_quotes(cleaned)
+        
+        # 尝试提取纯JSON部分
+        cleaned = self._extract_json_part(cleaned)
+        
+        return cleaned.strip()
+    
+    def _extract_json_part(self, text: str) -> str:
+        """从文本中提取JSON部分"""
+        import re
+        
+        # 如果已经是纯JSON，直接返回
+        if (text.startswith('{') and text.endswith('}')) or (text.startswith('[') and text.endswith(']')):
+            return text
+        
+        # 尝试提取JSON对象
+        json_obj_match = re.search(r'\{.*\}', text, re.DOTALL)
+        if json_obj_match:
+            return json_obj_match.group().strip()
+        
+        # 尝试提取JSON数组
+        json_arr_match = re.search(r'\[.*\]', text, re.DOTALL)
+        if json_arr_match:
+            return json_arr_match.group().strip()
+        
+        return text
+    
+    def _fix_chinese_quotes(self, text: str) -> str:
+        """智能修复中文引号问题"""
+        import re
+        
+        # 先统一转换所有中文引号为英文引号
+        text = text.replace('"', '"').replace('"', '"')
+        text = text.replace(''', "'").replace(''', "'")
+        
+        # 处理JSON中的控制字符
+        # 移除或替换不合法的控制字符
+        text = text.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
+        # 规范化多个空格为单个空格
+        text = re.sub(r'\s+', ' ', text)
+        
+        # 专门修复常见的嵌套引号问题
+        # 直接字符串替换方式修复已知问题
+        text = text.replace(
+            '"在输入框下方显示红色提示"任务内容不能为空""',
+            '"在输入框下方显示红色提示\\"任务内容不能为空\\""'
+        )
+        
+        return text
     
     def _identify_gaps(self, requirements: List[Requirement], original_text: str) -> List[str]:
         """Identify missing information in requirements"""
@@ -633,43 +1045,55 @@ class RequirementAnalyzer(BaseModule):
         has_styling = any(req.type == RequirementType.STYLING for req in requirements)
         has_interactions = any(req.type == RequirementType.INTERACTION for req in requirements)
         
+        language = self.config.get_app_setting("language", "zh_CN")
+        
         if not has_ui_components:
-            gaps.append("No specific UI components identified")
+            gaps.append(tr("gap_no_ui_components"))
         if not has_layout:
-            gaps.append("Layout structure not defined")
+            gaps.append(tr("gap_no_layout"))
         if not has_styling:
-            gaps.append("Visual styling requirements missing")
+            gaps.append(tr("gap_no_styling"))
         if not has_interactions:
-            gaps.append("User interaction patterns not specified")
+            gaps.append(tr("gap_no_interactions"))
         
         # Check for incomplete requirements
         for req in requirements:
             if not req.description.strip():
-                gaps.append(f"Requirement '{req.title}' lacks description")
+                gaps.append(tr("gap_missing_description").format(title=req.title))
             if not req.acceptance_criteria:
-                gaps.append(f"Acceptance criteria missing for '{req.title}'")
+                gaps.append(tr("gap_missing_acceptance_criteria").format(title=req.title))
         
         return gaps
     
     def _identify_ambiguities(self, requirements: List[Requirement]) -> List[str]:
         """Identify ambiguous or unclear requirements"""
         ambiguities = []
+        language = self.config.get_app_setting("language", "zh_CN")
         
         # Look for vague language
-        vague_words = ['somehow', 'maybe', 'probably', 'might', 'could', 'should probably']
+        vague_words_en = ['somehow', 'maybe', 'probably', 'might', 'could', 'should probably']
+        vague_words_zh = ['可能', '也许', '大概', '或许', '应该可能', '某种程度上']
         
         for req in requirements:
             text = (req.title + ' ' + req.description).lower()
             
-            for word in vague_words:
+            # Check English vague words
+            for word in vague_words_en:
                 if word in text:
-                    ambiguities.append(f"Vague language in '{req.title}': contains '{word}'")
+                    ambiguities.append(tr("ambiguity_vague_language").format(title=req.title, word=word))
+                    req.status = RequirementStatus.AMBIGUOUS
+                    break
+            
+            # Check Chinese vague words
+            for word in vague_words_zh:
+                if word in text:
+                    ambiguities.append(tr("ambiguity_vague_language").format(title=req.title, word=word))
                     req.status = RequirementStatus.AMBIGUOUS
                     break
             
             # Check for contradictory requirements
-            if 'simple' in text and 'complex' in text:
-                ambiguities.append(f"Contradictory complexity requirements in '{req.title}'")
+            if ('simple' in text and 'complex' in text) or ('简单' in text and '复杂' in text):
+                ambiguities.append(tr("ambiguity_contradictory").format(title=req.title))
         
         return ambiguities
     
@@ -707,24 +1131,36 @@ class RequirementAnalyzer(BaseModule):
                                 ambiguities: List[str]) -> List[str]:
         """Generate recommendations for improving requirements"""
         recommendations = []
+        language = self.config.get_app_setting("language", "zh_CN")
         
         if gaps:
-            recommendations.append("Address missing requirements to ensure complete specification")
+            recommendations.append(tr("recommendation_address_gaps"))
         
         if ambiguities:
-            recommendations.append("Clarify ambiguous requirements to avoid implementation confusion")
+            recommendations.append(tr("recommendation_clarify_ambiguities"))
         
         # Check requirement balance
         critical_count = len([req for req in requirements if req.priority == RequirementPriority.CRITICAL])
         total_count = len(requirements)
         
         if critical_count > total_count * 0.5:
-            recommendations.append("Consider reducing critical requirements - too many critical items may impact delivery")
+            recommendations.append(tr("recommendation_reduce_critical"))
         
         if critical_count == 0:
-            recommendations.append("Identify critical requirements to prioritize development effort")
+            recommendations.append(tr("recommendation_identify_critical"))
         
         return recommendations
+    
+    def _get_language_instruction(self) -> str:
+        """Get language instruction for AI prompts based on user's language setting"""
+        language = self.config.get_app_setting("language", "zh_CN")
+        
+        if language == "zh_CN":
+            return "请用中文回答。"
+        elif language == "en_US":
+            return "Please respond in English."
+        else:
+            return "Please respond in English."
     
     def _estimate_development_effort(self, requirements: List[Requirement]) -> Tuple[str, List[Dict[str, Any]]]:
         """Estimate development effort and phases"""
@@ -828,6 +1264,8 @@ class RequirementAnalyzer(BaseModule):
     # Prompt templates
     def _get_initial_analysis_prompt(self) -> str:
         return """
+        {language_instruction}
+        
         Analyze the following requirements text and extract individual requirements. 
         Categorize each requirement by type and priority.
         
@@ -862,79 +1300,99 @@ class RequirementAnalyzer(BaseModule):
     
     def _get_component_extraction_prompt(self) -> str:
         return """
-        For the UI component requirement: "{requirement_title}"
-        Description: {requirement_description}
+        {language_instruction}
         
-        Based on the original requirements: {original_text}
+        为UI组件需求进行详细分析: "{requirement_title}"
+        描述: {requirement_description}
         
-        Extract detailed component specification. Return as JSON - either a single component object or an array if multiple related components are involved:
+        基于原始需求: {original_text}
         
-        For single component:
+        请分析并返回组件规格的JSON格式，只需要返回JSON对象，不要添加任何解释或标记。
+        
+        对于单个组件，返回对象格式：
         {{
-            "name": "ComponentName",
-            "type": "button|input|form|card|modal|navigation|list|etc",
+            "name": "TaskCounter",
+            "type": "card",
             "properties": {{
-                "size": "small|medium|large",
-                "variant": "primary|secondary|outline",
-                "placeholder": "text",
-                "required": true,
-                "grid": {{"enabled": true, "columns": {{"xs": 1, "md": 2}}}},
-                "other_props": "value"
+                "size": "medium",
+                "variant": "outline",
+                "position": "top",
+                "layout": "horizontal",
+                "data": {{
+                    "pendingLabel": "待办中",
+                    "completedLabel": "已完成"
+                }},
+                "styling": {{
+                    "padding": "12px 16px",
+                    "backgroundColor": "#fafafa",
+                    "borderRadius": 4
+                }},
+                "responsive": {{
+                    "xs": {{ "fontSize": 14 }},
+                    "md": {{ "fontSize": 16 }}
+                }}
             }},
-            "events": ["click", "hover", "submit", "change", "scroll"],
-            "validation": {{
-                "rules": ["required", "email", "minLength:3"],
-                "messages": {{"required": "This field is required"}}
-            }},
+            "events": ["updateCount"],
+            "validation": {{}},
             "accessibility": {{
-                "aria-label": "Descriptive label",
-                "role": "button",
-                "keyboard_navigation": true
+                "aria-label": "任务统计信息：待办与已完成数量",
+                "role": "status",
+                "aria-live": "polite",
+                "keyboard_navigation": false
             }},
-            "children": ["ChildComponentName"]
+            "children": []
         }}
         
-        For multiple related components (like a list and its items):
+        对于多个相关组件，返回数组格式：
         [
             {{
-                "name": "ParentComponent",
-                "type": "list|container|form",
-                "properties": {{ ... }},
-                "events": [ ... ],
-                "children": ["ChildComponent"]
+                "name": "TaskList",
+                "type": "list",
+                "properties": {{ "virtualized": true }},
+                "events": ["scroll", "select"],
+                "children": ["TaskItem"]
             }},
             {{
-                "name": "ChildComponent", 
-                "type": "card|item|field",
-                "properties": {{ ... }},
-                "events": [ ... ]
+                "name": "TaskItem", 
+                "type": "card",
+                "properties": {{ "interactive": true }},
+                "events": ["click", "hover"]
             }}
         ]
         
-        Ensure all component specifications are detailed and include realistic properties, events, validation rules and accessibility features.
+        确保：
+        1. name字段使用具体的组件名称
+        2. type字段选择合适的组件类型：button, input, form, card, modal, list, item, container等
+        3. properties包含详细的配置信息
+        4. events列出相关的交互事件
+        5. accessibility提供无障碍访问信息
+        6. children列出子组件（如有）
         """
     
     def _get_layout_analysis_prompt(self) -> str:
         return """
-        For the layout requirement: {requirement_description}
+        {language_instruction}
         
-        Based on the original requirements: {original_text}
+        为布局需求进行详细分析: {requirement_description}
         
-        Analyze and provide layout specification as JSON:
+        基于原始需求: {original_text}
+        
+        请分析并返回布局规格的JSON格式，只需要返回JSON对象，不要添加任何解释或标记：
+        
         {{
-            "type": "grid|flex|absolute|flow",
+            "type": "flex",
             "sections": [
                 {{
                     "name": "header",
-                    "position": "top",
+                    "position": "top", 
                     "size": "auto",
-                    "components": ["navigation", "logo"]
+                    "components": ["appTitle"]
                 }},
                 {{
                     "name": "main",
                     "position": "center",
-                    "size": "1fr",
-                    "components": ["content"]
+                    "size": "1fr", 
+                    "components": ["todoList"]
                 }}
             ],
             "responsive": true,
@@ -949,14 +1407,23 @@ class RequirementAnalyzer(BaseModule):
                 "gap": "12px"
             }},
             "alignment": {{
-                "horizontal": "center|left|right|space-between",
-                "vertical": "top|center|bottom|space-around"
+                "horizontal": "center",
+                "vertical": "top"
             }}
         }}
+        
+        确保：
+        1. type字段必须是: grid, flex, absolute, flow 之一
+        2. sections数组包含页面的主要区域划分
+        3. 每个section包含name, position, size, components属性
+        4. responsive设为true或false
+        5. 提供合理的breakpoints、spacing、alignment配置
         """
     
     def _get_styling_analysis_prompt(self) -> str:
         return """
+        {language_instruction}
+        
         Analyze styling requirements and provide specification as JSON:
         {{
             "theme": "light|dark|auto",
@@ -1003,28 +1470,49 @@ class RequirementAnalyzer(BaseModule):
     
     def _get_interaction_analysis_prompt(self) -> str:
         return """
-        For the interaction requirement: {requirement_description}
+        {language_instruction}
         
-        Based on the original requirements: {original_text}
+        为交互需求进行详细分析: {requirement_description}
         
-        Extract interaction specifications as JSON array:
+        基于原始需求: {original_text}
+        
+        请分析并返回交互规格的JSON数组格式，只需要返回JSON数组，不要添加任何解释或标记：
+        
         [
             {{
-                "trigger": "click|hover|scroll|keyboard|focus",
-                "action": "navigate|submit|validate|show|hide|transform",
-                "target": "component_id_or_page",
-                "conditions": ["user_logged_in", "form_valid"],
-                "feedback": "visual|audio|haptic feedback description",
+                "trigger": "click",
+                "action": "transform",
+                "target": "task_item",
+                "conditions": [],
+                "feedback": "视觉：文本出现/消失删除线，颜色在灰色（已完成）与默认色（待办）之间切换；列表项立即更新无延迟",
+                "validation": null
+            }},
+            {{
+                "trigger": "keyboard", 
+                "action": "submit",
+                "target": "task_input",
+                "conditions": ["focus_on_input"],
+                "feedback": "visual: 新增的任务立即出现在列表顶部，并短暂高亮",
                 "validation": {{
-                    "rules": ["required_fields"],
-                    "error_handling": "show_message"
+                    "rules": ["input_not_empty"],
+                    "error_handling": "在输入框下方显示红色提示"任务内容不能为空""
                 }}
             }}
         ]
+        
+        确保：
+        1. trigger字段必须是: click, hover, scroll, keyboard, focus, drag 之一
+        2. action字段必须是: navigate, submit, validate, show, hide, transform, toggle 之一
+        3. target字段指明受影响的组件或元素
+        4. conditions数组列出触发条件（可为空）
+        5. feedback描述用户反馈（视觉、听觉、触觉）
+        6. validation包含验证规则和错误处理（可为null）
         """
     
     def _get_validation_prompt(self) -> str:
         return """
+        {language_instruction}
+        
         Review the following requirements for completeness and clarity:
         {requirements}
         
@@ -1041,4 +1529,48 @@ class RequirementAnalyzer(BaseModule):
             "conflicts": ["requirement A conflicts with B"],
             "feasibility_issues": ["complex requirement may need breakdown"]
         }}
+        """
+    
+    def _get_requirement_list_prompt(self) -> str:
+        return """
+        {language_instruction}
+        
+        分析以下需求文本，提取出完整的需求列表。这是第一阶段分析，专注于识别和分类所有需求项目，确保完整性。
+        
+        需求文本:
+        {requirements_text}
+        
+        附加上下文:
+        {context}
+        
+        目标平台: {platform}
+        
+        请返回一个JSON数组，包含所有识别出的需求项目。每个需求项目应该包含基本信息：
+        [
+            {{
+                "id": "REQ-001",
+                "title": "简明的需求标题",
+                "description": "需求的详细描述",
+                "type": "functional|ui_component|layout|styling|interaction|data|performance|accessibility|business",
+                "priority": "critical|high|medium|low",
+                "category": "核心功能|界面设计|数据处理|性能优化|其他",
+                "brief_rationale": "为什么需要这个需求的简要说明"
+            }}
+        ]
+        
+        请确保：
+        1. 提取出所有明确或隐含的需求
+        2. 正确分类每个需求的类型
+        3. 合理设置优先级
+        4. 用简洁明确的语言描述每个需求
+        5. 不要遗漏任何重要的功能或特性需求
+        
+        重点关注：
+        - 功能需求（用户可以做什么）
+        - UI组件需求（需要什么界面元素）
+        - 布局需求（界面如何组织）
+        - 交互需求（用户如何操作）
+        - 数据需求（需要处理什么数据）
+        - 性能需求（速度、响应时间等）
+        - 业务需求（业务逻辑和规则）
         """
