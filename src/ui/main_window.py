@@ -9,8 +9,16 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QComboBox, QSplitter, QScrollArea, QLineEdit,
                             QSpinBox, QDoubleSpinBox, QCheckBox, QGridLayout,
                             QFormLayout)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QUrl
 from PyQt5.QtGui import QPixmap, QFont, QIcon
+
+# Import QWebEngineView for HTML preview
+try:
+    from PyQt5.QtWebEngineWidgets import QWebEngineView
+    WEBENGINE_AVAILABLE = True
+except ImportError:
+    WEBENGINE_AVAILABLE = False
+    QWebEngineView = None
 
 from core.config import Config
 from core.image_analyzer import ImageAnalyzer
@@ -443,45 +451,50 @@ class MainWindow(QMainWindow):
         
         left_layout.addWidget(input_group)
         
-        # Prototype Settings Section
-        settings_group = QGroupBox(tr("prototype_settings"))
+        # Generation Settings
+        settings_group = QGroupBox(tr("generation_settings"))
         settings_layout = QFormLayout(settings_group)
         
-        # Prototype type
         self.prototype_type_combo = QComboBox()
         self.prototype_type_combo.addItems([tr("web"), tr("mobile"), tr("desktop")])
         settings_layout.addRow(tr("prototype_type"), self.prototype_type_combo)
         
-        # Framework
         self.framework_combo = QComboBox()
-        self.framework_combo.addItems([tr("html_css_js"), tr("react"), tr("vue"), tr("angular")])
+        self.framework_combo.addItems(["HTML/CSS/JS", "React", "Vue", "Angular"])
         settings_layout.addRow(tr("framework"), self.framework_combo)
         
-        # Style framework
         self.style_framework_combo = QComboBox()
-        self.style_framework_combo.addItems([tr("bootstrap"), tr("tailwind"), tr("custom")])
+        self.style_framework_combo.addItems(["Bootstrap", "Tailwind", "Custom"])
         settings_layout.addRow(tr("style_framework"), self.style_framework_combo)
         
-        # Responsive design
         self.responsive_check = QCheckBox()
         self.responsive_check.setChecked(True)
         settings_layout.addRow(tr("responsive_design"), self.responsive_check)
         
-        # Accessibility support
         self.accessibility_check = QCheckBox()
         self.accessibility_check.setChecked(True)
-        settings_layout.addRow(tr("accessibility_support"), self.accessibility_check)
+        settings_layout.addRow(tr("accessibility"), self.accessibility_check)
+        
+        # 新增实时预览选项
+        self.realtime_preview_check = QCheckBox()
+        self.realtime_preview_check.setChecked(True)
+        settings_layout.addRow(tr("realtime_preview"), self.realtime_preview_check)
         
         left_layout.addWidget(settings_group)
         
-        # Generate button
+        # Generation Controls
+        controls_group = QGroupBox(tr("generation_controls"))
+        controls_layout = QVBoxLayout(controls_group)
+        
         self.generate_prototype_btn = QPushButton("🚀 " + tr("generate_prototype"))
         self.generate_prototype_btn.clicked.connect(self.generate_prototype)
         self.generate_prototype_btn.setEnabled(False)
-        left_layout.addWidget(self.generate_prototype_btn)
+        controls_layout.addWidget(self.generate_prototype_btn)
+        
+        left_layout.addWidget(controls_group)
         
         # Progress section
-        progress_group = QGroupBox(tr("prototype_generation"))
+        progress_group = QGroupBox(tr("generation_progress"))
         progress_layout = QVBoxLayout(progress_group)
         
         self.prototype_progress_bar = QProgressBar()
@@ -493,12 +506,46 @@ class MainWindow(QMainWindow):
         left_layout.addWidget(progress_group)
         left_layout.addStretch()
         
-        # Right panel - Results
+        # Right panel - Results and Preview
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
         
         # Results tabs
         self.prototype_results_tab_widget = QTabWidget()
+        
+        # Preview Tab (移至第一位，突出实时预览)
+        preview_tab = QWidget()
+        preview_layout = QVBoxLayout(preview_tab)
+        
+        if WEBENGINE_AVAILABLE:
+            # 实时预览控制
+            preview_controls = QHBoxLayout()
+            self.refresh_preview_btn = QPushButton("🔄 " + tr("refresh_preview"))
+            self.refresh_preview_btn.clicked.connect(self.refresh_preview)
+            self.auto_refresh_check = QCheckBox(tr("auto_refresh"))
+            self.auto_refresh_check.setChecked(True)
+            
+            preview_controls.addWidget(self.refresh_preview_btn)
+            preview_controls.addWidget(self.auto_refresh_check)
+            preview_controls.addStretch()
+            preview_layout.addLayout(preview_controls)
+            
+            # Web预览组件
+            self.preview_web_view = QWebEngineView()
+            self.preview_web_view.setMinimumHeight(400)
+            preview_layout.addWidget(self.preview_web_view)
+            
+            # 预览状态指示
+            self.preview_status_label = QLabel(tr("preview_ready"))
+            preview_layout.addWidget(self.preview_status_label)
+        else:
+            # 备用预览方案
+            self.preview_placeholder = QLabel(tr("preview") + " - " + tr("webengine_not_available"))
+            self.preview_placeholder.setAlignment(Qt.AlignCenter)
+            self.preview_placeholder.setStyleSheet("background-color: #f0f0f0; border: 1px dashed #ccc; padding: 20px;")
+            preview_layout.addWidget(self.preview_placeholder)
+        
+        self.prototype_results_tab_widget.addTab(preview_tab, "🎯 " + tr("preview"))
         
         # Code Preview Tab
         code_tab = QWidget()
@@ -553,17 +600,6 @@ class MainWindow(QMainWindow):
         notes_layout.addWidget(self.notes_display)
         
         self.prototype_results_tab_widget.addTab(notes_tab, tr("implementation_notes"))
-        
-        # Preview Tab
-        preview_tab = QWidget()
-        preview_layout = QVBoxLayout(preview_tab)
-        
-        # Preview will be implemented later with QWebEngineView
-        self.preview_placeholder = QLabel(tr("preview") + " - " + tr("prototype_coming_soon"))
-        self.preview_placeholder.setAlignment(Qt.AlignCenter)
-        preview_layout.addWidget(self.preview_placeholder)
-        
-        self.prototype_results_tab_widget.addTab(preview_tab, tr("preview"))
         
         right_layout.addWidget(self.prototype_results_tab_widget)
         
@@ -653,7 +689,11 @@ class MainWindow(QMainWindow):
     
     def setup_connections(self):
         """Setup signal connections"""
-        pass
+        # Connect prototype generator signals for real-time preview
+        if hasattr(self.prototype_generator, 'step_completed'):
+            self.prototype_generator.step_completed.connect(self.on_prototype_step_completed)
+        if hasattr(self.prototype_generator, 'preview_ready'):
+            self.prototype_generator.preview_ready.connect(self.on_preview_ready)
     
     def select_image(self):
         """Select an image file"""
@@ -2041,7 +2081,8 @@ class MainWindow(QMainWindow):
             "framework": self.framework_combo.currentText(),
             "style_framework": self.style_framework_combo.currentText(),
             "responsive": self.responsive_check.isChecked(),
-            "accessibility": self.accessibility_check.isChecked()
+            "accessibility": self.accessibility_check.isChecked(),
+            "realtime_preview": self.realtime_preview_check.isChecked()
         }
         
         # Start generation in worker thread
@@ -2258,3 +2299,47 @@ class MainWindow(QMainWindow):
                     QMessageBox.critical(self, tr("error"), tr("prototype_export_failed"))
             except Exception as e:
                 QMessageBox.critical(self, tr("error"), f"{tr('prototype_export_failed')}: {str(e)}")
+    
+    def on_prototype_step_completed(self, step_name, step_result):
+        """Handle prototype generation step completion"""
+        if WEBENGINE_AVAILABLE and self.auto_refresh_check.isChecked():
+            # Update preview immediately when a step is completed
+            if step_result.get('preview'):
+                self.update_preview_content(step_result['preview'])
+                self.preview_status_label.setText(f"✅ 步骤完成: {step_name}")
+    
+    def on_preview_ready(self, html_content):
+        """Handle preview ready signal"""
+        if WEBENGINE_AVAILABLE:
+            self.update_preview_content(html_content)
+            self.preview_status_label.setText("🎯 预览已更新")
+    
+    def update_preview_content(self, html_content):
+        """Update the preview web view with new HTML content"""
+        if WEBENGINE_AVAILABLE and hasattr(self, 'preview_web_view'):
+            # Create a temporary file or use data URL
+            import tempfile
+            import os
+            
+            try:
+                # Create temporary HTML file
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as temp_file:
+                    temp_file.write(html_content)
+                    temp_file_path = temp_file.name
+                
+                # Load the file in web view
+                file_url = QUrl.fromLocalFile(os.path.abspath(temp_file_path))
+                self.preview_web_view.load(file_url)
+                
+                # Clean up after a delay (you might want to track these files better)
+                # For now, we'll leave the temp file as is - it gets cleaned up on system restart
+                
+            except Exception as e:
+                self.preview_status_label.setText(f"预览更新失败: {str(e)}")
+    
+    def refresh_preview(self):
+        """Manually refresh the preview"""
+        if self.current_prototype_result and WEBENGINE_AVAILABLE:
+            preview_html = self.prototype_generator.generate_preview_html()
+            self.update_preview_content(preview_html)
+            self.preview_status_label.setText("🔄 预览已刷新")
